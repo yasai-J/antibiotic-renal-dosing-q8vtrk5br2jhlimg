@@ -1,0 +1,570 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>腎機能別 抗菌薬投与量チェッカー</title>
+<meta name="description" content="CCr・未補正GFRから腎機能別の抗菌薬投与量（腎薬・サンフォード）を確認するツール">
+<meta name="robots" content="noindex, nofollow">
+<meta name="theme-color" content="#1b262c">
+<meta name="color-scheme" content="light dark">
+<link rel="manifest" href="./manifest.webmanifest">
+<link rel="icon" type="image/png" sizes="192x192" href="./icon-192.png">
+<link rel="apple-touch-icon" href="./apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="腎機能別投与量">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=BIZ+UDPGothic:wght@400;700&family=Barlow+Semi+Condensed:wght@500;600&display=swap">
+<style>
+/* ベースのリセット（PWA用） */
+html{-webkit-text-size-adjust:100%}
+:root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+body{margin:0;font-size:14px}
+img{max-width:100%}
+[hidden]{display:none!important}
+</style>
+<style>
+/* Layout: 上段に患者入力と腎機能（常に見える計算パネル）、下段に薬剤一覧（行=薬剤、列=腎薬/サンフォード）。行を開くと区分ラダー */
+:root{
+  --bg:#f3f5f6; --surface:#ffffff; --surface2:#e9eef0; --line:#cfd8dc; --ink:#1b262c; --muted:#5b6b73;
+  --jin:#0b6e63; --jin-soft:#e0f1ee;
+  --sf:#a52a22; --sf-soft:#f8e5e3;
+  --hit:#1b262c; --hit-soft:#dfe7ea;
+  --warn:#9a5b00; --warn-soft:#fff1d6; --warn-line:#e0a640;
+  --focus:#2a6fdb;
+  --f-body:"BIZ UDPGothic","Hiragino Sans","Yu Gothic",system-ui,sans-serif;
+  --f-num:"Barlow Semi Condensed","BIZ UDPGothic",system-ui,sans-serif;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#12181b; --surface:#1a2226; --surface2:#222c31; --line:#34434a; --ink:#e4ebee; --muted:#97a7ae;
+  --jin:#4fc3b2; --jin-soft:#16302c; --sf:#ec7a70; --sf-soft:#3a1f1d;
+  --hit:#e4ebee; --hit-soft:#2c3a40; --warn:#f2bd5c; --warn-soft:#3a2e15; --warn-line:#b9862c; --focus:#7aa9ff; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#12181b; --surface:#1a2226; --surface2:#222c31; --line:#34434a; --ink:#e4ebee; --muted:#97a7ae;
+  --jin:#4fc3b2; --jin-soft:#16302c; --sf:#ec7a70; --sf-soft:#3a1f1d;
+  --hit:#e4ebee; --hit-soft:#2c3a40; --warn:#f2bd5c; --warn-soft:#3a2e15; --warn-line:#b9862c; --focus:#7aa9ff; color-scheme:dark}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font-family:var(--f-body);font-size:15px;line-height:1.6;
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:20px 48px}
+.wrap{max-width:1180px;margin:0 auto;display:flex;flex-direction:column;gap:20px}
+h1{font-size:1.35rem;margin:0;text-wrap:balance;letter-spacing:.02em}
+h2{font-size:1rem;margin:0}
+.sub{color:var(--muted);font-size:.85rem;margin:2px 0 0}
+.num{font-family:var(--f-num);font-variant-numeric:tabular-nums}
+button,input,select{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--focus);outline-offset:2px}
+
+/* patient panel */
+.patient{background:var(--surface);border:1px solid var(--line);border-radius:10px;display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,1fr);}
+.inputs{padding:16px;display:flex;flex-direction:column;gap:12px;border-right:1px solid var(--line)}
+.fields{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:10px}
+.field{display:flex;flex-direction:column;gap:4px;min-width:0}
+.field label,.opt-label{font-size:.75rem;color:var(--muted);letter-spacing:.04em}
+.field input{width:100%;padding:8px 10px;border:1px solid var(--line);border-radius:6px;background:var(--bg);font-family:var(--f-num);font-size:1.15rem;font-variant-numeric:tabular-nums}
+.unit{font-size:.7rem;color:var(--muted)}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:6px;overflow:hidden}
+.seg button{border:0;background:var(--bg);padding:8px 12px;cursor:pointer}
+.seg button[aria-pressed="true"]{background:var(--ink);color:var(--surface);font-weight:700}
+.opts{display:flex;flex-wrap:wrap;gap:10px 18px;align-items:center;font-size:.85rem}
+.opts select{padding:4px 6px;border:1px solid var(--line);border-radius:6px;background:var(--bg)}
+.clear{margin-left:auto;border:1px solid var(--line);background:var(--bg);border-radius:6px;padding:6px 12px;cursor:pointer;font-size:.85rem}
+.clear:hover{border-color:var(--ink)}
+.example{display:flex;gap:10px;align-items:center;font-size:.8rem;color:var(--warn);background:var(--warn-soft);padding:6px 10px;border-radius:6px}
+.example button{margin-left:auto;border:1px solid var(--warn-line);background:transparent;border-radius:5px;padding:2px 10px;cursor:pointer;color:var(--warn)}
+.results{padding:16px;display:flex;flex-direction:column;gap:10px}
+.big{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.metric{border:1px solid var(--line);border-radius:8px;padding:10px 12px}
+.metric .k{font-size:.75rem;color:var(--muted);display:flex;align-items:center;gap:6px}
+.metric .v{font-family:var(--f-num);font-weight:600;font-size:2.1rem;line-height:1.1}
+.metric .v small{font-size:.8rem;color:var(--muted);font-weight:500;margin-left:4px}
+.minor{display:flex;flex-wrap:wrap;gap:4px 16px;font-size:.8rem;color:var(--muted)}
+.minor b{color:var(--ink);font-family:var(--f-num);font-weight:600;font-size:.95rem}
+.alerts{display:flex;flex-direction:column;gap:6px}
+.alert{font-size:.8rem;background:var(--warn-soft);color:var(--warn);border-radius:6px;padding:6px 10px}
+.mk{display:inline-flex;align-items:center;justify-content:center;font-size:.68rem;font-weight:700;border-radius:999px;padding:0 7px;height:18px;letter-spacing:.03em;white-space:nowrap}
+.mk.ccr{background:var(--hit);color:var(--surface)}
+.mk.egfr{border:1.5px solid var(--hit);color:var(--hit)}
+
+/* toolbar */
+.toolbar{display:flex;flex-wrap:wrap;gap:10px 16px;align-items:center;justify-content:space-between}
+.tabs{display:flex;gap:6px;flex-wrap:wrap}
+.tab{border:1px solid var(--line);background:var(--surface);border-radius:999px;padding:6px 14px;cursor:pointer;font-size:.9rem}
+.tab[aria-selected="true"]{background:var(--ink);color:var(--surface);border-color:var(--ink);font-weight:700}
+.chips{display:flex;gap:6px;flex-wrap:wrap}
+.chip{border:1px dashed var(--line);background:transparent;border-radius:6px;padding:3px 10px;font-size:.8rem;cursor:pointer;color:var(--muted)}
+.chip[aria-pressed="true"]{border-style:solid;border-color:var(--ink);color:var(--ink);font-weight:700}
+.chip:disabled{cursor:not-allowed;opacity:.55}
+.tools{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.tools input{padding:6px 10px;border:1px solid var(--line);border-radius:6px;background:var(--surface);width:180px}
+.tools button{border:1px solid var(--line);background:var(--surface);border-radius:6px;padding:6px 10px;cursor:pointer;font-size:.85rem}
+
+/* list */
+.list{display:flex;flex-direction:column;border:1px solid var(--line);border-radius:10px;background:var(--surface);overflow:hidden}
+.listhead,.row>summary{display:grid;grid-template-columns:minmax(0,.9fr) minmax(0,1.5fr) minmax(0,1.5fr) 28px;gap:14px;padding:10px 14px;align-items:start}
+.listhead{background:var(--surface2);font-size:.75rem;color:var(--muted);letter-spacing:.05em;font-weight:700}
+.src{display:inline-flex;align-items:center;gap:6px}
+.src::before{content:"";width:9px;height:9px;border-radius:2px;background:currentColor}
+.src.jin{color:var(--jin)} .src.sf{color:var(--sf)}
+.listhead .basis{font-weight:400;color:var(--muted)}
+.grouphead{padding:8px 14px;font-size:.78rem;font-weight:700;letter-spacing:.08em;color:var(--muted);border-top:1px solid var(--line);background:var(--bg)}
+.row{border-top:1px solid var(--line)}
+.row>summary{list-style:none;cursor:pointer}
+.row>summary::-webkit-details-marker{display:none}
+.row>summary:hover{background:var(--bg)}
+.dname b{font-size:1rem;display:block}
+.dname span{font-size:.78rem;color:var(--muted);display:block}
+.cell{display:flex;flex-direction:column;gap:6px;min-width:0}
+.cell .lbl{display:none;font-size:.7rem;font-weight:700;letter-spacing:.05em}
+.dose{font-size:.92rem}
+.dose .tier{font-family:var(--f-num);font-weight:600;font-size:.82rem;background:var(--hit-soft);border-radius:4px;padding:0 6px;margin-right:6px;white-space:nowrap}
+.split{display:flex;flex-direction:column;gap:4px}
+.split .line{display:flex;gap:6px;align-items:baseline}
+.bl{font-size:.78rem;color:var(--warn);background:var(--warn-soft);border-left:3px solid var(--warn-line);padding:4px 8px;border-radius:0 4px 4px 0}
+.na{color:var(--muted);font-size:.85rem}
+.chev{width:20px;height:20px;transition:transform .15s;color:var(--muted);margin-top:2px}
+.row[open] .chev{transform:rotate(90deg)}
+.detail{padding:4px 14px 16px;display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:16px;background:var(--bg);border-top:1px dashed var(--line)}
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:12px;display:flex;flex-direction:column;gap:10px;min-width:0}
+.panel h3{font-size:.85rem;margin:0;display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap}
+.panel h3 .basis{font-weight:400;color:var(--muted);font-size:.75rem}
+.panel h4{font-size:.8rem;margin:4px 0 0;color:var(--muted)}
+/* scale */
+.scale{position:relative;height:66px;margin:4px 6px 0}
+.scale .bar{position:absolute;left:0;right:0;top:20px;height:10px;border-radius:5px;background:var(--surface2);overflow:hidden}
+.scale .seg2{position:absolute;top:0;bottom:0}
+.scale .tick{position:absolute;top:16px;height:18px;width:2px;background:var(--ink);opacity:.55;transform:translateX(-1px)}
+.scale .tl{position:absolute;top:34px;font-size:.68rem;color:var(--muted);transform:translateX(-50%);font-family:var(--f-num)}
+.scale .band{position:absolute;top:20px;height:10px;background:var(--warn-line);opacity:.45}
+.scale .pin{position:absolute;top:0;transform:translateX(-50%)}
+.scale .pin.low{top:48px}
+/* ladder */
+.ladder{display:flex;flex-direction:column;gap:4px}
+.step{display:grid;grid-template-columns:64px minmax(0,1fr) auto;gap:10px;align-items:start;padding:6px 8px;border-radius:6px;border:1px solid transparent;font-size:.86rem}
+.step .rng{font-family:var(--f-num);font-weight:600;color:var(--muted)}
+.step .mks{display:flex;gap:4px;flex-wrap:wrap;justify-content:flex-end}
+.step.hit{background:var(--hit-soft);border-color:var(--line)}
+.step.hit .rng{color:var(--ink)}
+.step.near{border:1.5px dashed var(--warn-line)}
+.rrt{display:grid;grid-template-columns:52px minmax(0,1fr);gap:2px 10px;font-size:.8rem}
+.rrt dt{color:var(--muted);font-family:var(--f-num);font-weight:600}
+.rrt dd{margin:0}
+.notes{margin:0;padding-left:1.1em;font-size:.78rem;color:var(--muted)}
+.notes li+li{margin-top:2px}
+.flag{font-size:.72rem;color:var(--warn);font-weight:700}
+.empty{padding:20px 14px;color:var(--muted);text-align:center}
+footer{font-size:.78rem;color:var(--muted);display:flex;flex-direction:column;gap:6px;max-width:80ch}
+footer h2{font-size:.85rem;color:var(--ink)}
+footer ul{margin:0;padding-left:1.2em}
+
+
+.wip{display:inline-flex;align-items:center;gap:6px;font-size:.82rem;color:var(--muted);background:var(--surface2);border:1px dashed var(--line);border-radius:6px;padding:3px 10px}
+.wip::before{content:"";width:8px;height:8px;border-radius:50%;border:2px solid var(--muted)}
+.pend{display:inline-block;margin-left:6px;font-size:.68rem;font-weight:700;color:var(--sf);border:1px solid var(--sf);border-radius:4px;padding:0 5px;vertical-align:1px;white-space:nowrap}
+.condlbl{font-size:.75rem;font-weight:700;color:var(--muted)}
+.step.wipstep span:nth-child(2){color:var(--muted)}
+
+.top{display:flex;align-items:flex-start;gap:12px}
+.titlebox{flex:1;min-width:0}
+.suppmenu{position:relative;flex:none}
+.suppmain{border:1px solid var(--ink);background:var(--ink);color:var(--surface);border-radius:6px;padding:7px 14px;cursor:pointer;font-weight:700;font-size:.9rem}
+.supplist{position:absolute;right:0;top:calc(100% + 6px);z-index:40;width:min(300px,calc(100vw - 32px));background:var(--surface);border:1px solid var(--line);border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.14);padding:6px;display:flex;flex-direction:column;gap:2px}
+.suppitem{display:flex;flex-direction:column;align-items:flex-start;gap:1px;text-align:left;border:0;background:transparent;border-radius:6px;padding:8px 10px;cursor:pointer}
+.suppitem:hover:not(:disabled),.suppitem:focus-visible{background:var(--surface2)}
+.suppitem b{font-size:.88rem}
+.suppitem span{font-size:.75rem;color:var(--muted)}
+.suppitem:disabled{cursor:not-allowed;opacity:.55}
+.suppgrp{display:inline-flex;gap:6px;align-items:center;flex-wrap:wrap;padding-left:8px;border-left:1px solid var(--line)}
+.docbtn{border:1px solid var(--line);background:var(--surface);border-radius:6px;padding:6px 10px;cursor:pointer;font-size:.85rem}
+.docbtn:hover,.suppbtn:hover{border-color:var(--ink)}
+.supp{display:flex;gap:4px;flex-wrap:wrap;margin-top:6px}
+.suppbtn{font-size:.72rem;border:1px solid var(--line);background:var(--surface2);border-radius:4px;padding:1px 7px;cursor:pointer;color:var(--ink)}
+.sheet{position:fixed;inset:0;z-index:50}
+.sheet-bg{position:absolute;inset:0;background:rgba(10,16,20,.45)}
+.sheet-panel{position:absolute;top:0;right:0;bottom:0;width:min(880px,100%);background:var(--surface);display:flex;flex-direction:column;box-shadow:-8px 0 24px rgba(0,0,0,.18);
+  padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);padding-right:env(safe-area-inset-right,0px)}
+.sheet-head{display:flex;align-items:center;gap:12px;padding:14px 18px;border-bottom:1px solid var(--line)}
+.sheet-head h2{font-size:1rem;margin:0}
+.sheet-head .clear{margin-left:auto;white-space:nowrap;flex:none}
+.sheet-body{overflow:auto;padding:8px 18px 32px;font-size:.88rem;line-height:1.7}
+.sheet-body h3{font-size:1rem;margin:22px 0 8px;padding-top:6px;border-top:1px solid var(--line)}
+.sheet-body h4{font-size:.92rem;margin:16px 0 6px}
+.sheet-body p,.sheet-body li{max-width:75ch}
+.sheet-body .tw{overflow-x:auto;margin:8px 0}
+.sheet-body table{border-collapse:collapse;min-width:620px;width:100%;font-size:.82rem}
+.sheet-body th,.sheet-body td{border:1px solid var(--line);padding:6px 8px;vertical-align:top;text-align:left}
+.sheet-body th{background:var(--surface2)}
+.sheet-body a{color:var(--focus);word-break:break-all}
+.sheet-body .pulse{background:var(--warn-soft);border-radius:4px}
+@media (max-width:880px){
+  .patient{grid-template-columns:1fr}
+  .inputs{border-right:0;border-bottom:1px solid var(--line)}
+  .fields{grid-template-columns:repeat(3,minmax(0,1fr))}
+  .listhead{display:none}
+  .row>summary{grid-template-columns:minmax(0,1fr) 24px;}
+  .row>summary .dname{grid-column:1}
+  .row>summary .chev{grid-column:2;grid-row:1}
+  .row>summary .cell{grid-column:1 / span 2}
+  .cell .lbl{display:block}
+  .detail{grid-template-columns:1fr}
+}
+@media (max-width:440px){.fields{grid-template-columns:repeat(2,minmax(0,1fr))}.big{grid-template-columns:1fr}}
+@media (prefers-reduced-motion:reduce){.chev{transition:none}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <div class="titlebox">
+    <h1>腎機能別 抗菌薬投与量チェッカー</h1>
+    <p class="sub">腎薬（日本腎臓病薬物療法学会の目安）とサンフォード（表17A）を並べて確認します。サンフォード欄は確認中（「調整中」の印つき）です。</p>
+    </div>
+    <div class="suppmenu">
+      <button type="button" id="suppBtn" class="suppmain" aria-haspopup="true" aria-expanded="false" aria-controls="suppList">補足 <span aria-hidden="true">▾</span></button>
+      <div class="supplist" id="suppList" role="menu" hidden></div>
+    </div>
+  </header>
+
+  <section class="patient" aria-label="患者情報と腎機能">
+    <div class="inputs">
+      <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">
+        <span class="opt-label">性別</span>
+        <div class="seg" role="group" aria-label="性別">
+          <button type="button" id="sexM" aria-pressed="true">男性</button>
+          <button type="button" id="sexF" aria-pressed="false">女性</button>
+        </div>
+        <button type="button" id="clearBtn" class="clear">入力をクリア</button>
+      </div>
+      <div class="fields">
+        <div class="field"><label for="age">年齢 <span class="unit">歳</span></label><input id="age" type="number" inputmode="decimal" min="1" max="120"></div>
+        <div class="field"><label for="wt">体重 <span class="unit">kg</span></label><input id="wt" type="number" inputmode="decimal" step="0.1"></div>
+        <div class="field"><label for="ht">身長 <span class="unit">cm</span></label><input id="ht" type="number" inputmode="decimal" step="0.1"></div>
+        <div class="field"><label for="scr">血清Cr <span class="unit">mg/dL</span></label><input id="scr" type="number" inputmode="decimal" step="0.01"></div>
+        <div class="field"><label for="bw">境界幅 <span class="unit">±mL/min</span></label><input id="bw" type="number" inputmode="decimal" step="1" min="0" value="5"></div>
+      </div>
+      <div class="opts">
+        <label>CCrに使う体重
+          <select id="wtMode">
+            <option value="actual">実体重</option>
+            <option value="ibw">理想体重（IBW）</option>
+            <option value="adj">補正体重（AdjBW）</option>
+          </select>
+        </label>
+        <label><input type="checkbox" id="scrFloor"> Cr 0.6未満は0.6として計算</label>
+      </div>
+    </div>
+    <div class="results" aria-live="polite">
+      <div class="big">
+        <div class="metric"><div class="k"><span class="mk ccr">CCr</span>Cockcroft-Gault</div><div class="v num" id="vCcr">–<small>mL/min</small></div></div>
+        <div class="metric"><div class="k"><span class="mk egfr">未補正GFR</span>体表面積未補正</div><div class="v num" id="vEgfrU">–<small>mL/min</small></div></div>
+      </div>
+      <div class="minor">
+        <span>eGFR（補正） <b id="vEgfr">–</b> mL/min/1.73m²</span>
+        <span>BSA <b id="vBsa">–</b> m²</span>
+        <span>IBW <b id="vIbw">–</b> kg</span>
+        <span>BMI <b id="vBmi">–</b></span>
+      </div>
+      <div class="alerts" id="alerts"></div>
+    </div>
+  </section>
+
+  <section aria-label="薬剤一覧" style="display:flex;flex-direction:column;gap:12px">
+    <div class="toolbar">
+      <div style="display:flex;flex-direction:column;gap:8px">
+        <div class="tabs" role="tablist">
+          <button class="tab" role="tab" id="tab-inj" aria-selected="true">注射</button>
+          <button class="tab" role="tab" id="tab-po" aria-selected="false">内服</button>
+        </div>
+        <div class="chips" id="classChips"></div>
+      </div>
+      <div class="tools">
+        <input id="q" type="search" placeholder="薬剤名で絞り込み" aria-label="薬剤名で絞り込み">
+        <button type="button" id="expandAll">すべて開く</button>
+      </div>
+    </div>
+    <div class="list" id="list"></div>
+  </section>
+
+  <div class="sheet" id="sheet" hidden>
+    <div class="sheet-bg" id="sheetBg"></div>
+    <section class="sheet-panel" role="dialog" aria-modal="true" aria-labelledby="sheetTitle">
+      <header class="sheet-head"><h2 id="sheetTitle">補足</h2><button type="button" id="sheetClose" class="clear">閉じる</button></header>
+      <div class="sheet-body" id="sheetBody"></div>
+    </section>
+  </div>
+
+  <footer>
+    <h2>計算式と判定のルール</h2>
+    <ul>
+      <li>CCr（Cockcroft-Gault）＝(140−年齢)×体重 ÷ (72×Cr)、女性は×0.85</li>
+      <li>eGFR（日本腎臓学会）＝194×Cr<sup>−1.094</sup>×年齢<sup>−0.287</sup>、女性は×0.739。未補正GFR＝eGFR×BSA÷1.73（BSAはDuBois式）</li>
+      <li>IBW：男性50kg、女性45kg＋152.4cmを超える2.54cmごとに2.3kg（サンフォード表17Aの定義）。補正体重＝IBW＋0.4×(実体重−IBW)</li>
+      <li>区分は下限を含みます（例：「10–30」は10以上30未満）。腎薬はCCrと未補正GFRの両方、サンフォードはCCrで判定します。</li>
+      <li>区分の境目から「境界幅」以内にある場合は、隣の区分も点線で示します。</li>
+    </ul>
+    <h2>データについて</h2>
+    <ul id="dataNotes"></ul>
+    <p>投与量は院内の投与量マスタ（Excel）から表示しています。腎薬欄はチェック済み（N列＝1）の行だけ用量を出し、未チェックの行は「調整中」と表示します。サンフォード欄は数値が入っている行を「調整中」の印つきで表示します。</p>
+  </footer>
+</div>
+
+<script>
+const DATA = {"drugs": [{"id": "d0", "name": "ビクシリン", "generic": "アンピシリン（ABPC）", "routes": ["inj"], "routeLabel": "注射", "cls": "ペニシリン系", "jin": [{"label": "", "tiers": [{"min": 50, "max": 9999, "dose": "1〜2g/回 /分1～2　（FDA：0.5〜2g/回 4〜6時間毎）", "ok": true, "missing": false}, {"min": 30, "max": 50, "dose": "1〜2g/回 6〜8時間毎", "ok": true, "missing": false}, {"min": 10, "max": 30, "dose": "1〜2g/回 8〜12時間毎", "ok": true, "missing": false}, {"min": 0, "max": 10, "dose": "1〜2g/回 12〜24時間毎", "ok": true, "missing": false}]}], "sf": [{"label": "", "tiers": [{"min": 50, "max": 9999, "dose": "1〜2g 4〜6時間毎", "ok": false, "missing": false}, {"min": 30, "max": 50, "dose": "1〜2g 6〜8時間毎", "ok": false, "missing": false}, {"min": 10, "max": 30, "dose": "1〜2g 8〜12時間毎", "ok": false, "missing": false}, {"min": 0, "max": 10, "dose": "1〜2g 12時間毎", "ok": false, "missing": false}]}], "rrt": [{"label": "", "HD": "1〜2g 12時間毎（透析日は透析後）", "CAPD": "500mg〜1g 12時間毎", "CRRT": "1〜2g 8〜12時間毎"}], "notes": ["※PK/PD理論上少ない設定"], "sfNotes": ["院内Excelの30–50「2〜8時間毎」は6〜8時間毎に修正"]}, {"id": "d1", "name": "スルバシリン", "generic": "アンピシリン/スルバクタム（ABPC/SBT）", "routes": ["inj"], "routeLabel": "注射", "cls": "ペニシリン系", "jin": [{"label": "", "tiers": [{"min": 50, "max": 9999, "dose": "常用量（最大3g/回、1日4回）", "ok": true, "missing": false}, {"min": 30, "max": 50, "dose": "常用量OK/投与間隔注意（1.5〜3g/回 6〜8時間毎、最大3g/回、1日4回）", "ok": true, "missing": false}, {"min": 10, "max": 30, "dose": "1.5〜3g/回 12時間毎", "ok": true, "missing": false}, {"min": 0, "max": 10, "dose": "1.5〜3g/回 24時間毎", "ok": true, "missing": false}]}], "sf": [{"label": "", "tiers": [{"min": 60, "max": 9999, "dose": "3g 6時間毎", "ok": false, "missing": false}, {"min": 30, "max": 60, "dose": "3g 8時間毎", "ok": false, "missing": false}, {"min": 10, "max": 30, "dose": "3g 12時間毎", "ok": false, "missing": false}, {"min": 0, "max": 10, "dose": "3g 24時間毎", "ok": false, "missing": false}]}], "rrt": [{"label": "", "HD": "3g 24時間毎（透析日は透析後）", "CAPD": "3g 24時間毎", "CRRT": "3g 12時間毎"}], "notes": ["※PK/PD理論上少ない設定"], "sfNotes": []}, {"id": "d2", "name": "ピペラシリン", "generic": "ピペラシリン（PIPC）", "routes": ["inj"], "routeLabel": "注射", "cls": "ペニシリン系", "jin": [{"label": "", "tiers": [{"min": 50, "max": 9999, "dose": "常用量（1日2〜4gを分2〜4、FDA：3〜4g/回 4〜6時間毎）", "ok": true, "missing": false}, {"min": 30, "max": 50, "dose": "2〜4g/回 6〜8時間毎", "ok": true, "missing": false}, {"min": 10, "max": 30, "dose": "2〜4g/回 8〜12時間毎", "ok": true, "missing": false}, {"min": 0, "max": 10, "dose": "2〜4g/回 12時間毎", "ok": true, "missing": false}]}], "sf": [], "rrt": [], "notes": ["※PK/PD理論上少ない設定"], "sfNotes": []}, {"id": "d3", "name": "ペニシリンG", "generic": "ベンジルペニシリンカリウム（PCG）", "routes": ["inj"], "routeLabel": "注射", "cls": "ペニシリン系", "jin": [{"label": "", "tiers": [{"min": 50, "max": 9999, "dose": "①化膿性髄膜炎：400万単位/回 1日6回 ②IE：①Do 最大1回500万単位 1日3000万単位、③梅毒：300～400万単位/回 1日6回", "ok": true, "missing": false}, {"min": 10, "max": 50, "dose": "30～400万単位/回 8時間毎", "ok": true, "missing": false}, {"min": 0, "max": 10, "dose": "30～400万単位/回 12時間毎", "ok": true, "missing": false}]}], "sf": [{"label": "", "tiers": [{"min": 50, "max": 9999, "dose": "50〜400万単位 4時間毎", "ok": false, "missing": false}, {"min": 10, "max": 50, "dose": "50〜400万単位 8時間毎", "ok": false, "missing": false}, {"min": 0, "max": 10, "dose": "50〜400万単位 12時間毎", "ok": false, "missing": false}]}], "rrt": [{"label": "", "HD": "50〜400万単位 12時間毎（透析日は透析後）", "CAPD": "50〜400万単位 12時間毎", "CRRT": "100〜400万単位 6〜8時間毎"}], "notes": ["★カリウム注意（1V1.53mEq含有）★　※1200万単位/日の場合：ソルアセト500ml＋600万単位/12時間持続点滴 を推奨（K：22.36mEq/Lだが、安定性より）"], "sfNotes": []}, {"id": "d4", "name": "タゾピペ", "generic": "タゾバクタム/ピペラシリン（TAZ/PIPC）", "routes": ["inj"], "routeLabel": "注射", "cls": "ペニシリン系", "jin": [{"label": "", "tiers": [{"min": 40, "max": 9999, "dose": "4.5g/回 8時間毎（肺炎：1日4回まで増量可、腎盂腎炎・複雑性膀胱炎：1日2回、３回まで増量可、FN：1日4回）", "ok": true, "missing": false}, {"min": 10, "max": 40, "dose": "重症：4.5g/回 8〜12時間毎　軽症：2.25g/回 12時間毎", "ok": true, "missing": false}, {"min": 0, "max": 10, "dose": "重症：4.5g/回 12時間毎　軽症：2.25g/回 12時間毎", "ok": true, "missing": false}]}], "sf": [{"label": "緑膿菌以外", "tiers": [{"min": 40, "max": 9999, "dose": "3.375g 6時間毎", "ok": false, "missing": false}, {"min": 20, "max": 40, "dose": "2.25g 6時間毎", "ok": false, "missing": false}, {"min": 0, "max": 20, "dose": "2.25g 8時間毎", "ok": false, "missing": false}]}, {"label": "緑膿菌", "tiers": [{"min": 40, "max": 9999, "dose": "4.5g 6時間毎", "ok": false, "missing": false}, {"min": 20, "max": 40, "dose": "3.375g 6時間毎", "ok": false, "missing": false}, {"min": 0, "max": 20, "dose": "2.25g 6時間毎", "ok": false, "missing": false}]}], "rrt": [{"label": "緑膿菌以外", "HD": "2.25g 12時間毎（透析後に0.75g追加）", "CAPD": "2.25g 12時間毎", "CRRT": "2.25g 6時間毎"}, {"label": "緑膿菌", "HD": "2.25g 8時間毎（透析後に0.75g追加）", "CAPD": "2.25g 8時間毎", "CRRT": "MIC≦16：3.375g 6時間毎（30分以上）／MIC>16〜64：4.5g 8時間毎（4時間かけて）"}], "notes": [], "sfNotes": []}, {"id": "d5", "name": "サワシリン", "generic": "アモキシシリン（AMPC）", "routes": ["po"], "routeLabel": "内服", "cls": "ペニシリン系", "jin": [{"label": "", "tiers": [{"min": 30, "max": 9999, "dose": "250〜500mg/回 8時間毎（添付文書：250mg/回 1日3〜4回）", "ok": true, "missing": false}, {"min": 10, "max": 30, "dose": "250〜500mg/回 12時間毎", "ok": true, "missing": false}, {"min": 0, "max": 10, "dose": "250〜500mg/回 24時間毎", "ok": true, "missing": false}]}], "sf": [{"label": "", "tiers": [{"min": 50, "max": 9999, "dose": "250〜500mg 8時間毎", "ok": false, "missing": false}, {"min": 10, "max": 50, "dose": "250〜500mg 8〜12時間毎", "ok": false, "missing": false}, {"min": 0, "max": 10, "dose": "250〜500mg 24時間毎", "ok": false, "missing": false}]}], "rrt": [{"label": "", "HD": "250〜500mg 24時間毎（透析日は透析後）", "CAPD": "250mg 12時間毎", "CRRT": "250〜500mg 8〜12時間毎"}], "notes": [], "sfNotes": []}, {"id": "d6", "name": "オーグメンチン", "generic": "アモキシシリン/クラブラン酸（AMPC/CVA 250/125）", "routes": ["po"], "routeLabel": "内服", "cls": "ペニシリン系", "jin": [{"label": "", "tiers": [{"min": 50, "max": 9999, "dose": "250mg/回 6〜8時間毎", "ok": true, "missing": false}, {"min": 30, "max": 50, "dose": "250〜500mg/回 8時間毎（AMPC 500mgならオグサワ処方を考慮）", "ok": true, "missing": false}, {"min": 10, "max": 30, "dose": "250〜500mg/回 12時間毎（AMPC 500mgならオグサワ処方を考慮）", "ok": true, "missing": false}, {"min": 0, "max": 10, "dose": "250〜500mg/回 24時間毎", "ok": true, "missing": false}]}], "sf": [{"label": "", "tiers": [{"min": 50, "max": 9999, "dose": "500/125mg 8時間毎", "ok": false, "missing": false}, {"min": 10, "max": 50, "dose": "AMPCとして250〜500mg 12時間毎", "ok": false, "missing": false}, {"min": 0, "max": 10, "dose": "AMPCとして250〜500mg 24時間毎", "ok": false, "missing": false}]}], "rrt": [{"label": "", "HD": "AMPCとして250〜500mg 24時間毎（透析日は透析後に追加）", "CAPD": "データなし", "CRRT": "データなし"}], "notes": [], "sfNotes": ["海外製剤500/125基準（国内錠は250/125）。CCr≦30では875/125・1000/62.5製剤は使わない"]}, {"id": "d7", "name": "ユナシン", "generic": "スルタミシリン", "routes": ["po"], "routeLabel": "内服", "cls": "ペニシリン系", "jin": [{"label": "", "tiers": [{"min": 30, "max": 9999, "dose": "常用量（375mg/回を1日2〜3回）", "ok": true, "missing": false}, {"min": 10, "max": 30, "dose": "375mg/回 1日2回", "ok": true, "missing": false}, {"min": 0, "max": 10, "dose": "375mg 1日1回", "ok": true, "missing": false}]}], "sf": [], "rrt": [], "notes": ["サンフォードに記載なし"], "sfNotes": []}, {"id": "d8", "name": "セファゾリン", "generic": "セファゾリン（CEZ）", "routes": ["inj"], "routeLabel": "注射", "cls": "セフェム系", "jin": [{"label": "", "tiers": [{"min": 50, "max": 9999, "dose": "常用量（2g/日 分2、効果不十分なら1.5〜3g/日 分3、IE以外は1日5gまで可、※1～2ｇ/回 8時間毎）", "ok": true, "missing": false}, {"min": 30, "max": 50, "dose": "常用量OK（1〜2g/回 8時間毎）", "ok": true, "missing": false}, {"min": 10, "max": 30, "dose": "常用量OK（1〜2g/回 12時間毎）", "ok": true, "missing": false}, {"min": 0, "max": 10, "dose": "1〜2g/回 24時間毎", "ok": true, "missing": false}]}], "sf": [{"label": "", "tiers": [{"min": 50, "max": 9999, "dose": "1〜2g 8時間毎", "ok": false, "missing": false}, {"min": 10, "max": 50, "dose": "1〜2g 12時間毎", "ok": false, "missing": false}, {"min": 0, "max": 10, "dose": "1〜2g 24〜48時間毎", "ok": false, "missing": false}]}], "rrt": [{"label": "", "HD": "1〜2g 24〜48時間毎（透析後に追加投与：量は原典で確認）", "CAPD": "0.5g 12時間毎", "CRRT": "1〜2g 12時間毎"}], "notes": ["※一段下の基準"], "sfNotes": []}, {"id": "d9", "name": "セフォチアム", "generic": "セフォチアム（CTM）", "routes": ["inj"], "routeLabel": "注射", "cls": "セフェム系", "jin": [{"label": "", "tiers": [{"min": 50, "max": 9999, "dose": "常用量（0.5～2g/日 分2～4、※0.5～1g/回 8時間毎）", "ok": true, "missing": false}, {"min": 30, "max": 50, "dose": "常用量OK（0.5〜1g/回 8時間毎）", "ok": true, "missing": false}, {"min": 10, "max": 30, "dose": "0.5〜1g/回 12時間毎", "ok": true, "missing": false}, {"min": 0, "max": 10, "dose": "0.5〜1g/回 24時間毎", "ok": true, "missing": false}]}], "sf": [], "rrt": [], "notes": ["※一段下の基準"], "sfNotes": []}, {"id": "d10", "name": "セフメタゾール", "generic": "セフメタゾール（CMZ）", "routes": ["inj"], "routeLabel": "注射", "cls": "セフェム系", "jin": [{"label": "", "tiers": [{"min": 50, "max": 9999, "dose": "常用量（1日1～2g 分2、重症・難治：1日4g 分2～4）", "ok": true, "missing": false}, {"min": 30, "max": 50, "dose": "常用量OK（1g/回 8〜12時間毎）", "ok": true, "missing": false}, {"min": 10, "max": 30, "dose": "1g/回 12〜24時間毎", "ok": true, "missing": false}, {"min": 0, "max": 10, "dose": "1g/回 24〜48時間毎", "ok": true, "missing": false}]}], "sf": [], "rrt": [], "notes": ["サンフォードに記載なし"], "sfNotes": []}, {"id": "d11", "name": "フルマリン", "generic": "フロモキセフ（FMOX）", "routes": ["inj"], "routeLabel": "注射", "cls": "セフェム系", "jin": [{"label": "", "tiers": [{"min": 50, "max": 9999, "dose": "常用量（1日1〜2gを分2、重症・難治性：1日4g 分2～4）", "ok": true, "missing": false}, {"min": 10, "max": 50, "dose": "常用量OK（0.5〜1g/回 12時間毎）", "ok": true, "missing": false}, {"min": 0, "max": 10, "dose": "0.5〜1g/回 24時間毎", "ok": true, "missing": false}]}], "sf": [], "rrt": [], "notes": ["サンフォードに記載なし"], "sfNotes": []}, {"id": "d12", "name": "シオマリン", "generic": "ラタモキセフ（LMOX）", "routes": ["inj"], "routeLabel": "注射", "cls": "セフェム系", "jin": [{"label": "", "tiers": [{"min": 50, "max": 9999, "dose": "常用量（1日1〜2gを分2、重症・難治性：1日4g 分2～4）", "ok": true, "missing": false}, {"min": 30, "max": 50, "dose": "常用量OK（0.5〜1g/回 12時間毎）", "ok": true, "missing": false}, {"min": 10, "max": 30, "dose": "0.5〜1g/回 24時間毎", "ok": true, "missing": false}, {"min": 0, "max": 10, "dose": "0.5〜1g/回 24〜48時間毎", "ok": true, "missing": false}]}], "sf": [], "rrt": [], "notes": ["サンフォードに記載なし"], "sfNotes": []}, {"id": "d13", "name": "セフタジジム", "generic": "セフタジジム（CAZ）", "routes": ["inj"], "routeLabel": "注射", "cls": "セフェム系", "jin": [{"label": "", "tiers": [{"min": 50, "max": 9999, "dose": "常用量（1日1〜2gを分2、重症・難治性：1日4g 分2～4）", "ok": true, "missing": false}, {"min": 30, "max": 50, "dose": "常用量OK（1〜2g/回 12時間毎）", "ok": true, "missing": false}, {"min": 15, "max": 30, "dose": "1〜2g/回 24時間毎", "ok": true, "missing": false}, {"min": 0, "max": 15, "dose": "0.5〜1g/回 24時間毎", "ok": true, "missing": false}]}], "sf": [{"label": "", "tiers": [{"min": 50, "max": 9999, "dose": "2g 8〜12時間毎", "ok": false, "missing": false}, {"min": 10, "max": 50, "dose": "2g 12〜24時間毎", "ok": false, "missing": false}, {"min": 0, "max": 10, "dose": "2g 24〜48時間毎", "ok": false, "missing": false}]}], "rrt": [{"label": "", "HD": "2g 24〜48時間毎（透析後に1g追加）", "CAPD": "データなし", "CRRT": "1〜2g 12〜24時間毎（流量による）"}], "notes": [], "sfNotes": []}, {"id": "d14", "name": "クラフォラン、セフォタックス", "generic": "セファタキシム（CTX）", "routes": ["inj"], "routeLabel": "注射", "cls": "セフェム系", "jin": [{"label": "", "tiers": [{"min": 50, "max": 9999, "dose": "常用量（1日1〜2g 分2、重症・難治性：1日4gまで）(FDA：1～2g/回 8～12時間毎、最大12g/日）", "ok": true, "missing": false}, {"min": 20, "max": 50, "dose": "常用量OK（1〜2g/回 12時間毎）", "ok": true, "missing": false}, {"min": 0, "max": 20, "dose": "1〜2g/回 24時間毎", "ok": true, "missing": false}]}], "sf": [], "rrt": [], "notes": ["※PK/PD理論上少ない設定"], "sfNotes": []}, {"id": "d15", "name": "セフトリアキソン", "generic": "セフトリアキソン（CTRX）", "routes": ["inj"], "routeLabel": "注射", "cls": "セフェム系", "jin": [{"label": "", "tiers": [{"min": 30, "max": 9999, "dose": "常用量（1日1〜2gを分1～2、重症・難治性：1日4gまで）", "ok": true, "missing": false}, {"min": 0, "max": 30, "dose": "1g/回 24時間毎（難治・重症例は2g/日）", "ok": true, "missing": false}]}], "sf": [{"label": "", "tiers": [{"min": 0, "max": 9999, "dose": "減量なし（1〜2g 12〜24時間毎）", "ok": false, "missing": false}]}], "rrt": [{"label": "", "HD": "1〜2g 12〜24時間毎", "CAPD": "1〜2g 12〜24時間毎", "CRRT": "1〜2g 12〜24時間毎"}], "notes": [], "sfNotes": ["肝障害で用量調整が必要となることがある（サンフォード脚注）"]}, {"id": "d16", "name": "セフェピム", "generic": "セフェピム（CFPM）", "routes": ["inj"], "routeLabel": "注射", "cls": "セフェム系", "jin": [{"label": "一般感染症", "tiers": [{"min": 60, "max": 9999, "dose": "常用量（1日1〜2gを分2、重症感染症：1日4gまで）", "ok": true, "missing": false}, {"min": 30, "max": 60, "dose": "0.5〜1g/回 24時間毎", "ok": true, "missing": false}, {"min": 10, "max": 30, "dose": "0.5g/回 24時間毎", "ok": true, "missing": false}, {"min": 0, "max": 10, "dose": "0.25〜0.5g/回 24時間毎", "ok": true, "missing": false}]}, {"label": "発熱性好中球減少症", "tiers": [{"min": 60, "max": 9999, "dose": "常用量（1日4g 分2）", "ok": true, "missing": false}, {"min": 30, "max": 60, "dose": "常用量OK/投与間隔注意（2g/回 12〜24時間毎）", "ok": true, "missing": false}, {"min": 10, "max": 30, "dose": "1〜2g/回 24時間毎", "ok": true, "missing": false}, {"min": 0, "max": 10, "dose": "0.5〜1g/回 24時間毎", "ok": true, "missing": false}]}], "sf": [{"label": "", "tiers": [{"min": 60, "max": 9999, "dose": "2g 8〜12時間毎", "ok": false, "missing": false}, {"min": 30, "max": 60, "dose": "2g 12時間毎", "ok": false, "missing": false}, {"min": 10, "max": 30, "dose": "2g 24時間毎", "ok": false, "missing": false}, {"min": 0, "max": 10, "dose": "1g 24時間毎", "ok": false, "missing": false}]}], "rrt": [{"label": "", "HD": "1g 24時間毎（透析後に1g追加）", "CAPD": "1〜2g 48時間毎", "CRRT": "2g 12〜24時間毎"}], "notes": [], "sfNotes": ["原典の区分は「11〜29」と「<10」。10〜11は便宜上10以上に含めた"]}, {"id": "d17", "name": "ケフラール", "generic": "セファクロル（CCL）", "routes": ["po"], "routeLabel": "内服", "cls": "セフェム系", "jin": [{"label": "", "tiers": [{"min": 50, "max": 9999, "dose": "常用量（250mg/回 8時間毎（重症：1500mg/日まで））", "ok": true, "missing": false}, {"min": 10, "max": 50, "dose": "常用量OK（250～500mg/回 8時間毎）", "ok": true, "missing": false}, {"min": 0, "max": 10, "dose": "250～500mg/回 12時間毎", "ok": true, "missing": false}]}], "sf": [], "rrt": [], "notes": [], "sfNotes": []}, {"id": "d18", "name": "ケフレックス", "generic": "セファレキシン（CEX）", "routes": ["po"], "routeLabel": "内服", "cls": "セフェム系", "jin": [{"label": "", "tiers": [{"min": 50, "max": 9999, "dose": "250mg/回 6時間毎（1g/日、重症：2g/日）", "ok": true, "missing": false}, {"min": 30, "max": 50, "dose": "250mg/回 8時間毎", "ok": true, "missing": false}, {"min": 10, "max": 30, "dose": "250mg/回 12時間毎", "ok": true, "missing": false}, {"min": 0, "max": 10, "dose": "250mg/回 24時間毎", "ok": true, "missing": false}]}], "sf": [{"label": "", "tiers": [{"min": 50, "max": 9999, "dose": "500mg 6時間毎", "ok": false, "missing": false}, {"min": 10, "max": 50, "dose": "500mg 12時間毎", "ok": false, "missing": false}, {"min": 0, "max": 10, "dose": "250mg 12時間毎", "ok": false, "missing": false}]}], "rrt": [{"label": "", "HD": "250mg 12時間毎（透析日は透析後）", "CAPD": "500mg 12時間毎", "CRRT": "データなし"}], "notes": [], "sfNotes": []}, {"id": "d19", "name": "フロモックス", "generic": "セフカペンピボキシル（CFPN-PI）", "routes": ["po"], "routeLabel": "内服", "cls": "セフェム系", "jin": [{"label": "", "tiers": [{"min": 50, "max": 9999, "dose": "常用量（1日3回 1回100mg、重症：1回150㎎）", "ok": true, "missing": false}, {"min": 30, "max": 50, "dose": "常用量OK/投与間隔注意（1日2～3回 1回100mg）", "ok": true, "missing": false}, {"min": 10, "max": 30, "dose": "1日2回 1回100mg", "ok": true, "missing": false}, {"min": 0, "max": 10, "dose": "1日1～2回 1回100mg", "ok": true, "missing": false}]}], "sf": [], "rrt": [], "notes": [], "sfNotes": []}, {"id": "d20", "name": "ワイスタール、スルペラゾン", "generic": "スルペラゾン／セフォペラゾン（SBT/CPZ）", "routes": ["inj"], "routeLabel": "注射", "cls": "セフェム系", "jin": [{"label": "", "tiers": [{"min": 0, "max": 9999, "dose": "常用量（1～2g/日 分2、難治・重症：1日4g）", "ok": true, "missing": false}]}], "sf": [], "rrt": [], "notes": ["※腎機能別の投与量設定なし"], "sfNotes": []}, {"id": "d21", "name": "メロペネム", "generic": "メロペネム（MEPM）", "routes": ["inj"], "routeLabel": "注射", "cls": "カルバペネム系", "jin": [{"label": "", "tiers": [{"min": 50, "max": 9999, "dose": "常用量（1日0.5〜1g 分2〜3、最大3g/日まで）※化膿性髄膜炎：1日6g、FN：1日3g", "ok": true, "missing": false}, {"min": 25, "max": 50, "dose": "常用量OK/投与間隔注意（1回量は減量せず0.5〜1g/回 12時間毎）", "ok": true, "missing": false}, {"min": 10, "max": 25, "dose": "1/2量（0.25〜0.5g/回）12時間毎（緑膿菌：1回0.5g）", "ok": true, "missing": false}, {"min": 0, "max": 10, "dose": "1/2量（0.25〜0.5g/回）24時間毎（緑膿菌：1回0.5g）", "ok": true, "missing": false}]}], "sf": [{"label": "", "tiers": [{"min": 50, "max": 9999, "dose": "1g 8時間毎", "ok": false, "missing": false}, {"min": 25, "max": 50, "dose": "1g 12時間毎", "ok": false, "missing": false}, {"min": 10, "max": 25, "dose": "0.5g 12時間毎", "ok": false, "missing": false}, {"min": 0, "max": 10, "dose": "0.5g 24時間毎", "ok": false, "missing": false}]}], "rrt": [{"label": "", "HD": "0.5g 24時間毎（透析日は透析後）", "CAPD": "0.5g 24時間毎", "CRRT": "1g 12時間毎"}], "notes": [], "sfNotes": []}, {"id": "d22", "name": "イミペネム", "generic": "イミペネム/シラスタチン（IPM/CS）", "routes": ["inj"], "routeLabel": "注射", "cls": "カルバペネム系", "jin": [{"label": "", "tiers": [{"min": 50, "max": 9999, "dose": "常用量（1日0.5〜1g 分2〜3、重症：1日2gまで）", "ok": true, "missing": false}, {"min": 30, "max": 50, "dose": "常用量OK/投与間隔注意（0.25〜0.5g/回 12時間毎）", "ok": true, "missing": false}, {"min": 15, "max": 30, "dose": "0.125〜0.25g/回 12時間毎", "ok": true, "missing": false}, {"min": 0, "max": 15, "dose": "0.25g/回 24時間毎 ★痙攣リスクあり、他剤への変更を推奨★", "ok": true, "missing": false}]}], "sf": [{"label": "", "tiers": [{"min": 90, "max": 9999, "dose": "500mg 6時間毎 または 1g 8時間毎（中等度感受性：1g 6時間毎）", "ok": false, "missing": false}, {"min": 60, "max": 90, "dose": "400〜500mg 6時間毎 または 500mg 8時間毎（中等度感受性：750mg 8時間毎）", "ok": false, "missing": false}, {"min": 30, "max": 60, "dose": "300mg 6時間毎 または 500mg 8時間毎（中等度感受性：500mg 6時間毎）", "ok": false, "missing": false}, {"min": 15, "max": 30, "dose": "200mg 6時間毎 または 500mg 12時間毎（中等度感受性：500mg 12時間毎）", "ok": false, "missing": false}, {"min": 0, "max": 15, "dose": "表に記載なし（透析患者は透析時シートを参照）", "ok": false, "missing": false}]}], "rrt": [{"label": "", "HD": "200mg 6時間毎 または 500mg 12時間毎（透析後投与）／中等度感受性：500mg 12時間毎（透析後投与）", "CAPD": "125〜250mg 12時間毎", "CRRT": "0.5〜1g 12時間毎"}], "notes": [], "sfNotes": ["原典の区分は 60〜<90／30〜<60／15〜<30"]}, {"id": "d23", "name": "ホスミシンS", "generic": "ホスホマイシン（FOM）", "routes": ["inj"], "routeLabel": "注射", "cls": "その他", "jin": [{"label": "", "tiers": [{"min": 40, "max": 9999, "dose": "1日2～4g 分2", "ok": true, "missing": false}, {"min": 10, "max": 40, "dose": "0.5～1g/回 12時間毎", "ok": true, "missing": false}, {"min": 0, "max": 10, "dose": "1g/回 24時間毎 or 2g/回 48時間毎", "ok": true, "missing": false}]}], "sf": [{"label": "", "tiers": [{"min": 0, "max": 9999, "dose": "", "ok": false, "missing": true}]}], "rrt": [], "notes": [], "sfNotes": ["表17Aの該当ページは写真に含まれていない"]}, {"id": "d24", "name": "ホスミシン錠", "generic": "ホスホマイシン（FOM）", "routes": ["po"], "routeLabel": "内服", "cls": "その他", "jin": [{"label": "", "tiers": [{"min": 50, "max": 9999, "dose": "１日2～3ｇ 分3～4", "ok": true, "missing": false}, {"min": 10, "max": 50, "dose": "500mg/回 6時間毎", "ok": true, "missing": false}, {"min": 0, "max": 10, "dose": "500mg/回 12時間毎", "ok": true, "missing": false}]}], "sf": [{"label": "", "tiers": [{"min": 0, "max": 9999, "dose": "", "ok": false, "missing": true}]}], "rrt": [], "notes": [], "sfNotes": ["表17Aの該当ページは写真に含まれていない"]}, {"id": "d25", "name": "キュビシン、ダプトマイシン", "generic": "ダプトマイシン（DAP）", "routes": ["inj"], "routeLabel": "注射", "cls": "その他", "jin": [{"label": "敗血症、IE", "tiers": [{"min": 30, "max": 9999, "dose": "6mg/kg/回 24時間毎（FDA　菌血症：6mg/kg、IE： 8〜10mg/kg）", "ok": true, "missing": false}, {"min": 0, "max": 30, "dose": "6mg/kg/回 48時間毎", "ok": true, "missing": false}]}, {"label": "皮膚感染、創部", "tiers": [{"min": 30, "max": 9999, "dose": "4mg/kg/回 24時間毎（FDA　骨関節6〜8mg/kg）", "ok": true, "missing": false}, {"min": 0, "max": 30, "dose": "4mg/kg/回 48時間毎", "ok": true, "missing": false}]}], "sf": [{"label": "", "tiers": [{"min": 0, "max": 9999, "dose": "", "ok": false, "missing": true}]}], "rrt": [], "notes": ["肥満患者は調整体重で計算。CK週1回測定（CK>2000、またはミオパチー＋CK>1000で中止）"], "sfNotes": ["表17Aの該当ページは写真に含まれていない"]}, {"id": "d26", "name": "テイコプラニン", "generic": "テイコプラニン（TEIC）", "routes": ["inj"], "routeLabel": "注射", "cls": "その他", "jin": [{"label": "", "tiers": [{"min": 0, "max": 9999, "dose": "TDM対象薬：薬剤部へ連絡を", "ok": true, "missing": false}]}], "sf": [{"label": "", "tiers": [{"min": 0, "max": 9999, "dose": "", "ok": false, "missing": true}]}], "rrt": [], "notes": ["TDM推奨（トラフ15μg/mL以上、重症20〜30）。実体重で計算。<30の4日目の記載は原表になし"], "sfNotes": ["表17Aの該当ページは写真に含まれていない"]}, {"id": "d27", "name": "ザイボックス", "generic": "リネゾリド（LZD）", "routes": ["inj"], "routeLabel": "注射", "cls": "その他", "jin": [{"label": "", "tiers": [{"min": 30, "max": 9999, "dose": "600mg 12時間毎（腎機能による調整なし）", "ok": true, "missing": false}, {"min": 0, "max": 30, "dose": "600mg 12～24時間毎（腎機能による調整ないが、PLT減少のリスクあり、投与間隔延長/24時間毎への変更を考慮）", "ok": true, "missing": false}]}], "sf": [{"label": "", "tiers": [{"min": 0, "max": 9999, "dose": "600mg 12時間毎（腎機能による調整なし）", "ok": false, "missing": false}]}], "rrt": [{"label": "", "HD": "600mg 12時間毎（透析日は透析後に投与：詳細は原典で確認）", "CAPD": "600mg 12時間毎", "CRRT": "600mg 12時間毎"}], "notes": ["※PLT低下のリスク因子：GFR＜30，HD、45㎏未満、14日以上"], "sfNotes": ["eGFR<60で300mg 12時間毎とする報告あり（AAC 63:e00605, 2019）"]}, {"id": "d28", "name": "ザイボックス", "generic": "リネゾリド（LZD）", "routes": ["po"], "routeLabel": "内服", "cls": "その他", "jin": [{"label": "", "tiers": [{"min": 30, "max": 9999, "dose": "600mg 12時間毎（腎機能による調整なし）", "ok": true, "missing": false}, {"min": 0, "max": 30, "dose": "600mg 12～24時間毎（腎機能による調整ないが、PLT減少のリスクあり、投与間隔延長/24時間毎への変更を考慮）", "ok": true, "missing": false}]}], "sf": [{"label": "", "tiers": [{"min": 0, "max": 9999, "dose": "600mg 12時間毎（腎機能による調整なし）", "ok": false, "missing": false}]}], "rrt": [{"label": "", "HD": "600mg 12時間毎（透析日は透析後に投与：詳細は原典で確認）", "CAPD": "600mg 12時間毎", "CRRT": "600mg 12時間毎"}], "notes": ["※PLT低下のリスク因子：GFR＜30，HD、45㎏未満、14日以上"], "sfNotes": ["eGFR<60で300mg 12時間毎とする報告あり（AAC 63:e00605, 2019）"]}, {"id": "d29", "name": "バクタ配合錠", "generic": "スルファメトキサゾール/トリメトプリム（ST）錠", "routes": ["po"], "routeLabel": "内服", "cls": "その他", "jin": [{"label": "", "tiers": [{"min": 30, "max": 9999, "dose": "①一般感染症：1日4錠　分2、②PCP治療：1日9～12錠 分3～４", "ok": true, "missing": false}, {"min": 15, "max": 30, "dose": "通常量の1/2（通常量：1日4錠 分2、PCP：別途確認）", "ok": true, "missing": false}, {"min": 0, "max": 15, "dose": "一般感染症には推奨されない　※PCP：別途確認", "ok": true, "missing": false}]}], "sf": [{"label": "", "tiers": [{"min": 0, "max": 9999, "dose": "", "ok": false, "missing": true}]}], "rrt": [], "notes": [], "sfNotes": ["表17Aの該当ページは写真に含まれていない"]}, {"id": "d30", "name": "フラジール錠", "generic": "メトロニダゾール（MNZ）錠", "routes": ["po"], "routeLabel": "内服", "cls": "その他", "jin": [{"label": "", "tiers": [{"min": 0, "max": 9999, "dose": "", "ok": false, "missing": true}]}], "sf": [{"label": "", "tiers": [{"min": 0, "max": 9999, "dose": "", "ok": false, "missing": true}]}], "rrt": [], "notes": [], "sfNotes": ["表17Aの該当ページは写真に含まれていない"]}, {"id": "d31", "name": "クラビット、レボフロキサシン", "generic": "レボフロキサシン（LVFX）", "routes": ["inj"], "routeLabel": "注射", "cls": "キノロン系", "jin": [{"label": "", "tiers": [{"min": 50, "max": 9999, "dose": "500mg 1日1回", "ok": true, "missing": false}, {"min": 20, "max": 50, "dose": "初日500mg、以後250mg 1日1回", "ok": true, "missing": false}, {"min": 0, "max": 20, "dose": "初日500mg、3日目以降250mgを2日に1回", "ok": true, "missing": false}]}], "sf": [{"label": "", "tiers": [{"min": 0, "max": 9999, "dose": "", "ok": false, "missing": true}]}], "rrt": [], "notes": [], "sfNotes": ["表17Aの該当ページ（レボフロキサシン）は写真に含まれていない"]}, {"id": "d32", "name": "クラビット、レボフロキサシン", "generic": "レボフロキサシン（LVFX）", "routes": ["po"], "routeLabel": "内服", "cls": "キノロン系", "jin": [{"label": "", "tiers": [{"min": 50, "max": 9999, "dose": "500mg 1日1回", "ok": true, "missing": false}, {"min": 20, "max": 50, "dose": "初日500mg、以後250mg 1日1回", "ok": true, "missing": false}, {"min": 0, "max": 20, "dose": "初日500mg、3日目以降250mgを2日に1回", "ok": true, "missing": false}]}], "sf": [{"label": "", "tiers": [{"min": 0, "max": 9999, "dose": "", "ok": false, "missing": true}]}], "rrt": [], "notes": [], "sfNotes": ["表17Aの該当ページ（レボフロキサシン）は写真に含まれていない"]}, {"id": "d33", "name": "シプロキサン注", "generic": "シプロフロキサシン（CPFX）点滴静注", "routes": ["inj"], "routeLabel": "注射", "cls": "キノロン系", "jin": [{"label": "", "tiers": [{"min": 60, "max": 9999, "dose": "400mg/回 12時間毎", "ok": true, "missing": false}, {"min": 30, "max": 60, "dose": "200mg/回 12時間毎", "ok": true, "missing": false}, {"min": 0, "max": 30, "dose": "200mg/回 24時間毎", "ok": true, "missing": false}]}], "sf": [{"label": "", "tiers": [{"min": 50, "max": 9999, "dose": "400mg 12時間毎", "ok": false, "missing": false}, {"min": 0, "max": 50, "dose": "400mg 24時間毎", "ok": false, "missing": false}]}], "rrt": [{"label": "", "HD": "400mg 24時間毎（透析日は透析後）", "CAPD": "400mg 24時間毎", "CRRT": "200〜400mg 12時間毎"}], "notes": [], "sfNotes": []}, {"id": "d34", "name": "シプロキサン錠", "generic": "シプロフロキサシン（CPFX）錠", "routes": ["po"], "routeLabel": "内服", "cls": "キノロン系", "jin": [{"label": "", "tiers": [{"min": 60, "max": 9999, "dose": "100～200mg/回 分2～3", "ok": true, "missing": false}, {"min": 30, "max": 60, "dose": "200mg/回 12時間毎", "ok": true, "missing": false}, {"min": 0, "max": 30, "dose": "200mg/回 24時間毎", "ok": true, "missing": false}]}], "sf": [{"label": "", "tiers": [{"min": 50, "max": 9999, "dose": "500〜750mg 12時間毎", "ok": false, "missing": false}, {"min": 10, "max": 50, "dose": "250〜500mg 12時間毎", "ok": false, "missing": false}, {"min": 0, "max": 10, "dose": "500mg 24時間毎", "ok": false, "missing": false}]}], "rrt": [{"label": "", "HD": "500mg 24時間毎（透析日は透析後）", "CAPD": "500mg 24時間毎", "CRRT": "250〜500mg 12時間毎"}], "notes": [], "sfNotes": ["徐放剤以外の用量（国内の錠剤は100/200mg）"]}, {"id": "d35", "name": "ノルフロキサシン", "generic": "ノルフロキサシン（NFLX）錠", "routes": ["po"], "routeLabel": "内服", "cls": "キノロン系", "jin": [{"label": "", "tiers": [{"min": 60, "max": 9999, "dose": "100〜200mg/回 1日3〜4回（FDA：400mg/回 12時間毎）", "ok": true, "missing": false}, {"min": 30, "max": 60, "dose": "200〜400mg/回 12時間毎", "ok": true, "missing": false}, {"min": 0, "max": 30, "dose": "200〜400mg/回 24時間毎", "ok": true, "missing": false}]}], "sf": [{"label": "", "tiers": [{"min": 30, "max": 9999, "dose": "400mg 12時間毎", "ok": false, "missing": false}, {"min": 0, "max": 30, "dose": "400mg 24時間毎", "ok": false, "missing": false}]}], "rrt": [], "notes": ["※PK/PD理論上少ない設定"], "sfNotes": ["院内Excelのサンフォード欄から転記（表17Aの該当ページの写真はなし）"]}, {"id": "d36", "name": "ラスビック", "generic": "ラスクフロキサシン（LSFX）錠", "routes": ["inj"], "routeLabel": "注射", "cls": "キノロン系", "jin": [{"label": "", "tiers": [{"min": 0, "max": 9999, "dose": "初日1日1回 300mg、2日目以降 150mg/回", "ok": true, "missing": false}]}], "sf": [], "rrt": [], "notes": ["※腎機能別の投与量設定なし"], "sfNotes": []}, {"id": "d37", "name": "ラスビック", "generic": "ラスクフロキサシン（LSFX）錠", "routes": ["po"], "routeLabel": "内服", "cls": "キノロン系", "jin": [{"label": "", "tiers": [{"min": 0, "max": 9999, "dose": "1日1回 1回75mg", "ok": true, "missing": false}]}], "sf": [{"label": "", "tiers": [{"min": 0, "max": 9999, "dose": "", "ok": false, "missing": true}]}], "rrt": [], "notes": ["※腎機能別の投与量設定なし"], "sfNotes": ["国内承認薬で、表17Aには載っていない可能性が高い"]}, {"id": "d38", "name": "グレースビット、シタフロキサシン", "generic": "シタフロキサシン（STFX）", "routes": ["po"], "routeLabel": "内服", "cls": "キノロン系", "jin": [{"label": "", "tiers": [{"min": 50, "max": 9999, "dose": "50mg/回 1日2回、or 100mg/回 1日1回（効果不良の場合：100mg/回 1日2回）", "ok": true, "missing": false}, {"min": 30, "max": 50, "dose": "50mg/回 24時間毎", "ok": true, "missing": false}, {"min": 0, "max": 30, "dose": "50mg/回 48時間毎", "ok": true, "missing": false}]}], "sf": [], "rrt": [], "notes": [], "sfNotes": []}], "classes": ["ペニシリン系", "セフェム系", "カルバペネム系", "キノロン系", "その他"]};
+const DRUGS = DATA.drugs;
+const DOCS = {"ie": {"title": "感染性心内膜炎（IE）抗菌薬選択・投与量", "html": "<p><em>国内ガイドライン準拠｜成人・静注治療の実務整理</em></p>\n<h3>資料の位置づけ</h3>\n<p>本資料は「2026年改訂版 感染性心内膜炎診療ガイドライン」（日本循環器学会合同研究班、2026年3月20日発行）の第4章「抗菌薬治療」に基づき、成人の主なレジメンを薬剤師向けに整理したものです。海外ガイドラインの投与量・治療期間は採用していません。</p>\n<p>重要：ガイドライン推奨量と国内承認用量は一致しない場合があります。ガイドライン本文では、†印の薬剤などに国内未承認・適応外使用が含まれ得ること、TDM対象薬は国内承認用法との違いを確認することが示されています。実投与前に最新の添付文書、院内採用薬・抗菌薬使用指針、感染症専門医の判断を確認してください。</p>\n<h3>1. 経験的治療（血液培養結果判明前）</h3>\n<p>臨床的にIEの可能性が高く、特に血行動態不安定・敗血症・塞栓症・弁周囲膿瘍などがある場合は、培養採取後に速やかな治療開始を検討します。</p>\n<div class=\"tw\"><table>\n\n<thead>\n<tr>\n<th><strong>状況</strong></th>\n<th><strong>レジメン</strong></th>\n<th><strong>ガイドライン記載の投与量</strong></th>\n<th><strong>備考</strong></th>\n</tr>\n</thead>\n<tbody>\n<tr>\n<td>自己弁・MRSAの可能性が低い</td>\n<td>ABPC/SBT ＋ CTRX</td>\n<td>ABPC/SBT：3 g 1日3～4回<br />\nCTRX：2 g 1日1回</td>\n<td>MRSAリスクが低い場合</td>\n</tr>\n<tr>\n<td>自己弁・MRSAを考慮</td>\n<td>VCM または DAP ＋ CTRX</td>\n<td>VCM：負荷25～30 mg/kg、維持15～20 mg/kg 1日2回<br />\nDAP：8～10 mg/kg 1日1回<br />\nCTRX：2 g 1日1回</td>\n<td>MRSAを考慮する場合。βラクタムアレルギー時も検討</td>\n</tr>\n<tr>\n<td>自己弁・MRSAを考慮し広域GNRカバー</td>\n<td>VCM または DAP ＋ CFPM</td>\n<td>VCM：負荷25～30 mg/kg、維持15～20 mg/kg 1日2回<br />\nDAP：8～10 mg/kg 1日1回<br />\nCFPM：2 g 1日2回</td>\n<td>広域GNRカバーが必要な場合</td>\n</tr>\n<tr>\n<td>人工弁</td>\n<td>VCM または DAP ＋ CTRX または ABPC/SBT</td>\n<td>VCM：負荷25～30 mg/kg、維持15～20 mg/kg 1日2回<br />\nDAP：8～10 mg/kg 1日1回<br />\nCTRX：2 g 1日1回<br />\nABPC/SBT：3 g 1日3～4回</td>\n<td>GM追加を考慮してもよい</td>\n</tr>\n<tr>\n<td>人工弁・医療関連感染でGNRカバー</td>\n<td>VCM または DAP ＋ CFPM</td>\n<td>VCM：負荷25～30 mg/kg、維持15～20 mg/kg 1日2回<br />\nDAP：8～10 mg/kg 1日1回<br />\nCFPM：2 g 1日2回</td>\n<td>必要に応じGM追加を考慮</td>\n</tr>\n</tbody>\n</table></div>\n<p>略語：ABPC/SBT＝アンピシリン／スルバクタム、CTRX＝セフトリアキソン、VCM＝バンコマイシン、DAP＝ダプトマイシン、CFPM＝セフェピム、GM＝ゲンタマイシン。</p>\n<h3>2. 原因菌判明後の標的治療</h3>\n<h4>2-1. レンサ球菌（自己弁：代表例）</h4>\n<div class=\"tw\"><table>\n\n<thead>\n<tr>\n<th><strong>菌・感受性</strong></th>\n<th><strong>抗菌薬</strong></th>\n<th><strong>投与量・スケジュール</strong></th>\n<th><strong>期間</strong></th>\n</tr>\n</thead>\n<tbody>\n<tr>\n<td>ペニシリン感性（MIC &lt;0.12 μg/mL）のVGS／S. gallolyticus</td>\n<td>PCG</td>\n<td>200～400万単位 1日6回、または持続投与</td>\n<td>4週</td>\n</tr>\n<tr>\n<td>同上</td>\n<td>ABPC</td>\n<td>2 g 1日6回</td>\n<td>4週</td>\n</tr>\n<tr>\n<td>同上・非重症ペニシリンアレルギー</td>\n<td>CTRX</td>\n<td>2 g 1日1回</td>\n<td>4週</td>\n</tr>\n<tr>\n<td>同上・非重症ペニシリンアレルギー</td>\n<td>CEZ</td>\n<td>2 g 1日3回</td>\n<td>4週</td>\n</tr>\n<tr>\n<td>同上・短期併用レジメン</td>\n<td>PCGまたはABPC ＋ GM</td>\n<td>PCG 200～400万単位 1日6回または持続投与／ABPC 2 g 1日6回 ＋ GM 3 mg/kg 1日1回</td>\n<td>各2週</td>\n</tr>\n</tbody>\n</table></div>\n<p>ペニシリン感受性の判定、ペニシリン非感性株、栄養要求性レンサ球菌（Abiotrophia／Granulicatella）・Gemellaなどは別レジメンです。人工弁感染は推奨表7を参照し、自己弁の表を流用しないでください。</p>\n<h4>2-2. ブドウ球菌（自己弁）</h4>\n<div class=\"tw\"><table>\n\n<thead>\n<tr>\n<th><strong>菌・感受性</strong></th>\n<th><strong>抗菌薬</strong></th>\n<th><strong>投与量・スケジュール</strong></th>\n<th><strong>期間・注意</strong></th>\n</tr>\n</thead>\n<tbody>\n<tr>\n<td>MSSA／メチシリン感性CoNS</td>\n<td>CEZ</td>\n<td>2 g 1日3回</td>\n<td>4～6週。アミノグリコシド併用は推奨しない</td>\n</tr>\n<tr>\n<td>MSSA／メチシリン感性CoNS・βラクタムアレルギー</td>\n<td>DAP</td>\n<td>8～10 mg/kg 1日1回</td>\n<td>4～6週。併用療法は本文参照</td>\n</tr>\n<tr>\n<td>MRSA／メチシリン耐性CoNS</td>\n<td>DAP</td>\n<td>8～10 mg/kg 1日1回</td>\n<td>人工弁表では6～8週。併用療法は本文参照</td>\n</tr>\n<tr>\n<td>MRSA／メチシリン耐性CoNS</td>\n<td>VCM</td>\n<td>負荷25～30 mg/kg、維持15～20 mg/kg 1日2回</td>\n<td>人工弁表では6～8週。TDM必須</td>\n</tr>\n</tbody>\n</table></div>\n<p>髄膜炎・脳膿瘍合併時はCEZなどの選択を再検討します。CoNSはメチシリン感受性結果が判明するまではMRSAに準じた薬剤選択を考慮します。人工弁感染のブドウ球菌治療は推奨表9を必ず確認してください。</p>\n<h4>2-3. 腸球菌（自己弁）</h4>\n<div class=\"tw\"><table>\n\n<thead>\n<tr>\n<th><strong>菌・条件</strong></th>\n<th><strong>抗菌薬</strong></th>\n<th><strong>投与量・スケジュール</strong></th>\n<th><strong>期間・注意</strong></th>\n</tr>\n</thead>\n<tbody>\n<tr>\n<td>ペニシリン感性、GM高度耐性なし</td>\n<td>ABPC ＋ GM</td>\n<td>ABPC 2 g 1日4～6回 ＋ GM 2～3 mg/kg 1日1回</td>\n<td>ABPC 4～6週。GMは通常4週、条件により2週短縮を検討</td>\n</tr>\n<tr>\n<td>高齢者・腎機能低下（CCr &lt;50 mL/min）・GM高度耐性</td>\n<td>ABPC ＋ CTRX</td>\n<td>ABPC 2 g 1日4～6回 ＋ CTRX 2 g 1日1～2回</td>\n<td>4～6週</td>\n</tr>\n<tr>\n<td>βラクタム系薬アレルギー</td>\n<td>VCM</td>\n<td>負荷25～30 mg/kg、維持15～20 mg/kg 1日2回</td>\n<td>4～6週。TDMに基づく</td>\n</tr>\n</tbody>\n</table></div>\n<p>GM高度耐性（MIC &gt;500 μg/mL）ではGMを併用しません。ABPC＋CTRXはE. faecalisを想定した組み合わせであり、E. faeciumには無効のため使用しません。人工弁IEでは推奨表11を確認してください。</p>\n<h4>2-4. HACEK群・その他</h4>\n<p>HACEK群はガイドライン推奨表12に従って選択します。菌種・感受性・弁の種類による条件を確認してください。本資料では表12の全行を転記していないため、具体的な処方時は原文表12を直接参照してください。</p>\n<p>肺炎球菌、β溶血性レンサ球菌、栄養要求性レンサ球菌、真菌、血液培養陰性IEなどは、通常のVGS／ブドウ球菌／腸球菌の表を流用せず、ガイドライン該当節を確認してください。</p>\n<h3>3. 投与期間・カウント開始日</h3>\n<p>治療期間は菌種、感受性、自己弁／人工弁、合併症、手術の有無によって異なります。一律に「全例4～6週間」としないでください。ガイドライン本文の投与期間のカウント開始日・治療効果判定の項を確認し、血液培養陰性化日、手術時の培養結果などを踏まえて個別に設定します。</p>\n<p>本資料の表中の期間は各推奨表の記載を示しています。人工弁感染の治療期間は自己弁の表から推定せず、人工弁用の推奨表を参照してください。</p>\n<h3>4. TDM・安全性モニタリング</h3>\n<div class=\"tw\"><table>\n\n<thead>\n<tr>\n<th><strong>薬剤</strong></th>\n<th><strong>確認事項</strong></th>\n<th><strong>実務上の注意</strong></th>\n</tr>\n</thead>\n<tbody>\n<tr>\n<td>VCM</td>\n<td>血中濃度／AUC、腎機能、MIC</td>\n<td>ガイドラインAppendixのTDM対象薬と国内承認用法の関係を確認。腎機能変動時は再評価</td>\n</tr>\n<tr>\n<td>GM</td>\n<td>血中濃度、腎機能、聴覚・前庭症状</td>\n<td>併用期間を漫然と延長しない。投与中は腎機能を週1～2回程度確認</td>\n</tr>\n<tr>\n<td>TEIC</td>\n<td>血中濃度、腎機能</td>\n<td>負荷投与・維持投与の方法と国内承認用法の差を確認</td>\n</tr>\n<tr>\n<td>DAP</td>\n<td>CK、筋症状、腎機能</td>\n<td>高用量使用時はCKを定期的に確認。腎機能に応じた投与間隔調整</td>\n</tr>\n<tr>\n<td>CEZ／ABPC／CFPM等</td>\n<td>腎機能、神経症状、血算・肝機能など</td>\n<td>腎機能に応じて投与量・間隔を調整。IE推奨量と添付文書用量の差を確認</td>\n</tr>\n</tbody>\n</table></div>\n<h3>5. 薬剤師の確認チェックリスト</h3>\n<ul>\n<li><p>血液培養は抗菌薬開始前に適切に採取されているか</p></li>\n<li><p>自己弁／人工弁／TAVI／デバイス感染の区別が明確か</p></li>\n<li><p>菌種・感受性・MIC・GM高度耐性の有無を確認したか</p></li>\n<li><p>国内ガイドラインの該当推奨表（5～12）を参照したか</p></li>\n<li><p>腎機能（CCrを含む）・体重・透析条件を踏まえた投与設計か</p></li>\n<li><p>VCM／GM／TEICのTDM計画があるか</p></li>\n<li><p>治療期間とカウント開始日がチーム内で共有されているか</p></li>\n<li><p>弁周囲膿瘍、心不全、塞栓症、脳合併症などの評価が行われているか</p></li>\n<li><p>適応外使用・未承認用量・薬物相互作用を確認したか</p></li>\n</ul>\n<h3>6. 参照資料（国内資料のみ）</h3>\n<p>日本循環器学会合同研究班．2026年改訂版 感染性心内膜炎診療ガイドライン．2026年3月20日発行．</p>\n<p>第4章 抗菌薬治療：pp.41–57（経験的治療、原因菌別標的治療、推奨表5～12）。</p>\n<p>Appendix：抗菌薬と薬剤感受性、TDM対象薬の推奨使用法と国内承認用法の関係（pp.118–119）。</p>\n<p>公式PDF：<a href=\"https://www.j-circ.or.jp/cms/wp-content/uploads/2026/03/JCS2026_Izumi.pdf\" target=\"_blank\" rel=\"noopener\">https://www.j-circ.or.jp/cms/wp-content/uploads/2026/03/JCS2026_Izumi.pdf</a></p>\n<p>日本循環器学会 ガイドラインシリーズ：<a href=\"https://www.j-circ.or.jp/guideline/guideline-series/\" target=\"_blank\" rel=\"noopener\">https://www.j-circ.or.jp/guideline/guideline-series/</a></p>\n<p><strong>注意：本資料はガイドラインの要点整理であり、処方指示書ではありません。</strong>症例ごとの最終選択・投与量・投与期間は、感染症専門医・循環器内科・心臓血管外科等と協議し、最新の正誤表・添付文書・院内指針を確認してください。</p>\n"}, "tdm": {"title": "抗菌薬・抗真菌薬のTDM一覧", "html": "<p>初回測定時期・採血タイミング・目標濃度・有害事象リスク</p>\n<p>対象：成人を中心とした実務用要約。小児、妊産婦、透析・CHDF、熱傷、極端な体格、特殊な投与法では個別の推奨を確認する。</p>\n<h3>1．対象薬剤の一覧</h3>\n<div class=\"tw\"><table>\n\n<thead>\n<tr>\n<th><strong>薬剤</strong></th>\n<th><strong>初回TDM時期</strong></th>\n<th><strong>採血タイミング</strong></th>\n<th><strong>目標濃度・指標</strong></th>\n<th><strong>中毒・有害事象リスク</strong></th>\n</tr>\n</thead>\n<tbody>\n<tr>\n<td>バンコマイシン（VCM）</td>\n<td>初回：通常 3日目（4～5回目投与直前）。重症・複雑性感染でソフトウェア使用時は早期採血を考慮</td>\n<td>AUC評価。必要時トラフ＋ピークの2点</td>\n<td>AUC24 400～600 μg・h/mL（MIC 1 μg/mL想定）</td>\n<td>AUC &gt;600で腎障害リスク上昇。トラフ15～20 μg/mLを一律に目指す方法は推奨されない</td>\n</tr>\n<tr>\n<td>テイコプラニン（TEIC）</td>\n<td>4日目</td>\n<td>トラフ（次回投与直前）</td>\n<td>非複雑性MRSA：15～30 μg/mL／複雑性感染・重症例：20～40 μg/mL</td>\n<td>一律の確立した中毒濃度は設定されていない。高値時は腎機能・聴覚・血球系等を含め評価</td>\n</tr>\n<tr>\n<td>ゲンタマイシン（GM）</td>\n<td>初回：2回目投与時（初回投与から16時間以上、CLcr ≥60 mL/minの条件）</td>\n<td>Cpeak：点滴開始1時間後（30分点滴なら終了30分後）。トラフ：次回投与前30分以内</td>\n<td>1日1回・グラム陰性菌：MIC 2でCpeak 15～20、MIC ≤1で8～10 μg/mL。トラフ &lt;1 μg/mL。IE併用（分割投与）：Cpeak 3～4 μg/mL（訂正後）</td>\n<td>1日1回投与でトラフ ≥1 μg/mLは腎障害リスクに注意。耳毒性は血中濃度より累積投与量との関連</td>\n</tr>\n<tr>\n<td>トブラマイシン（TOB）</td>\n<td>初回：2回目投与時（初回投与から16時間以上、CLcr ≥60 mL/minの条件）</td>\n<td>Cpeak：点滴開始1時間後（30分点滴なら終了30分後）。トラフ：次回投与前30分以内</td>\n<td>1日1回・グラム陰性菌：MIC 2でCpeak 15～20、MIC ≤1で8～10 μg/mL。トラフ &lt;1 μg/mL</td>\n<td>1日1回投与でトラフ ≥1 μg/mLは腎障害リスクに注意。耳毒性は累積投与量にも留意</td>\n</tr>\n<tr>\n<td>アミカシン（AMK）</td>\n<td>初回：2回目投与時（初回投与から16時間以上、CLcr ≥60 mL/minの条件）</td>\n<td>Cpeak：点滴開始1時間後（30分点滴なら終了30分後）。トラフ：次回投与前30分以内</td>\n<td>1日1回：MIC 8でCpeak 50～60、MIC ≤4で41～49 μg/mL。トラフ &lt;4 μg/mL</td>\n<td>1日1回投与でトラフ ≥4 μg/mLは腎障害リスクに注意。分割投与ではトラフ目標 &lt;10 μg/mL</td>\n</tr>\n<tr>\n<td>アルベカシン（ABK）</td>\n<td>初回：2回目投与時（初回投与から18時間以上、CLcr ≥50 mL/minの条件）</td>\n<td>Cpeak：点滴開始1時間後（30分点滴なら終了30分後）。トラフ：次回投与前30分以内</td>\n<td>1日1回：Cpeak ≥15 μg/mL、トラフ 1～2 μg/mL</td>\n<td>トラフ 1～2 μg/mLを目標域として管理。≥2 μg/mLでは腎障害リスクに注意</td>\n</tr>\n<tr>\n<td>ボリコナゾール（VRCZ）</td>\n<td>通常投与：5～7日目（定常状態到達時）。より早期に定常状態となる報告もある</td>\n<td>トラフ（次回投与直前）</td>\n<td>有効性：≥1 μg/mL／安全性：&lt;4 μg/mL。通常の目標域は1～4 μg/mL未満</td>\n<td>トラフ ≥4 μg/mLで肝機能障害・神経障害リスクが上昇。Child-Pugh Cでは &lt;3 μg/mLも考慮</td>\n</tr>\n</tbody>\n</table></div>\n<h3>2．薬剤別の補足・実務上の注意</h3>\n<h4>バンコマイシン（VCM）</h4>\n<ul>\n<li><p>成人の軽・中等症／非複雑性感染、ソフトウェアを使用しない場合：腎機能正常例では定常状態到達が見込まれる4～5回目投与直前（通常3日目）に初回TDM。</p></li>\n<li><p>重症・複雑性感染でAUC推定ソフトウェアを使用する場合：定常状態前の3回目投与前後に早期PK評価を考慮。1日2回投与なら翌日、1日1回投与なら3日目が目安。</p></li>\n<li><p>トラフは投与前30分以内。ピークは点滴終了1～2時間後。重症・複雑性感染、腎機能低下、利尿薬使用、TAZ/PIPC併用等ではトラフ＋ピークの2点採血を推奨。</p></li>\n<li><p>目標AUC24は400～600 μg・h/mL（MIC=1 μg/mL想定）。AUC &gt;600では腎障害リスクが上がる。トラフ15～20 μg/mLは腎障害リスクがあり、AUCに代わる目標値として扱わない。</p></li>\n<li><p>初回TDM後は少なくとも週1回のPK評価。投与計画変更時や腎機能・循環動態が不安定な場合は、より短い間隔で再評価する。</p></li>\n</ul>\n<h4>テイコプラニン（TEIC）</h4>\n<ul>\n<li><p>半減期が長いため、定常状態を待たず4日目のトラフ値で初期投与設計を評価する。3日目に測定した場合、4日目の目標値をそのまま適用しない。</p></li>\n<li><p>非複雑性MRSA感染症は15～30 μg/mL、骨髄炎・感染性心内膜炎などの複雑性感染症や重症例は20～40 μg/mLを目標とする。</p></li>\n<li><p>腎機能低下例、投与設計変更例、重症例では初回TDMから1週間以内にフォローアップTDMを行うことを考慮する。</p></li>\n<li><p>低アルブミン血症では総濃度が低く出る一方、遊離型濃度は必ずしも低くない。総濃度のみを見て安易に増量しない。</p></li>\n</ul>\n<h4>アミノグリコシド系薬（GM／TOB／AMK／ABK）</h4>\n<ul>\n<li><p>初回TDMは原則2回目投与時。GM／TOB／AMKでは初回投与から16時間以上（CLcr ≥60 mL/min）、ABKでは18時間以上（CLcr ≥50 mL/min）経過していることが条件として示される。</p></li>\n<li><p>Cpeakは組織分布終了後の濃度として、点滴開始1時間後に採血（30分点滴なら終了30分後）。トラフは次回投与前30分以内。</p></li>\n<li><p>GM／TOBの1日1回投与では、MICに応じてピーク目標が変わる。MIC=2 μg/mLでは15～20、MIC≤1 μg/mLでは8～10 μg/mLを目標とする。</p></li>\n<li><p>GMを感染性心内膜炎でグラム陽性菌に対する併用療法として3分割投与する場合、Cpeak目標は3～4 μg/mL（2022年正誤表反映）。通常の高用量1日1回投与のピーク目標と混同しない。</p></li>\n<li><p>GM／TOBの1日複数回投与ではピーク目標を設定せず、トラフ &lt;2 μg/mLを目安とする。AMKの分割投与ではトラフ &lt;10 μg/mL。ABKの目標トラフは1～2 μg/mL。</p></li>\n<li><p>初回TDM後は少なくとも週1回。腎機能低下・変動、投与計画変更、腎毒性リスク、血行動態不安定では頻回測定を検討する。耳毒性は血中濃度だけでなく投与期間・累積投与量にも注意する。</p></li>\n</ul>\n<h4>ボリコナゾール（VRCZ）</h4>\n<ul>\n<li><p>通常投与では5～7日目に定常状態に達するとされ、その時点で初回TDMを行う。近年はより早期に定常状態に達する報告もあるため、臨床状況に応じて判断する。</p></li>\n<li><p>トラフ値を測定し、有効性の目安は1 μg/mL以上、安全性の目安は4 μg/mL未満。4 μg/mL以上で肝機能障害・神経障害リスクが上昇する。</p></li>\n<li><p>CYP2C19遺伝子多型の影響が大きく、日本人では副作用予防目的のTDMを考慮する。肝機能障害、治療反応不良、用量変更、経口・注射剤の切替時にも再測定を検討する。</p></li>\n<li><p>非線形薬物動態を示すため、投与量変更後の濃度変化は比例しない。用量変更後はTDMで再確認する。</p></li>\n</ul>\n<h3>3．TDM対象の範囲について</h3>\n<p>本資料は、日本化学療法学会・日本TDM学会『抗菌薬TDM臨床実践ガイドライン2022』が各論として扱うVCM、TEIC、アミノグリコシド系薬（GM／TOB／AMK／ABK）、VRCZを対象とした。</p>\n<p>リネゾリド（LZD）、テジゾリド、ダプトマイシン（DAP）は同ガイドラインで『今後TDMの適応に関する検討が必要な抗菌薬』として総論で触れられているが、本ガイドラインに基づく標準的な初回測定日・目標濃度・中毒濃度が確立したルーチンTDM対象薬としては扱っていない。</p>\n<p>「中毒値」は薬剤によって明確な絶対閾値が定義されていない。表中では、ガイドラインが示す有害事象リスクとの関連濃度または安全性の目標値を記載した。目標範囲を外れたことだけで中毒と断定せず、腎機能、肝機能、聴覚・神経症状、投与量、投与間隔、感染症の重症度を合わせて評価する。</p>\n<h3>4．参照ガイドライン・一次資料</h3>\n<ol type=\"1\">\n<li><p>日本化学療法学会・日本TDM学会．抗菌薬TDM臨床実践ガイドライン2022（Executive summary）．日本化学療法学会雑誌．2022；70(1)：1–72．<a href=\"https://www.chemotherapy.or.jp/uploads/files/guideline/tdm2022.pdf\" target=\"_blank\" rel=\"noopener\">https://www.chemotherapy.or.jp/uploads/files/guideline/tdm2022.pdf</a></p></li>\n<li><p>日本化学療法学会．抗菌薬TDM臨床実践ガイドライン2022（Executive summary）掲載ページ．<a href=\"https://www.chemotherapy.or.jp/modules/guideline/index.php?content_id=82\" target=\"_blank\" rel=\"noopener\">https://www.chemotherapy.or.jp/modules/guideline/index.php?content_id=82</a></p></li>\n<li><p>日本化学療法学会．抗菌薬TDM臨床実践ガイドライン2022、ボリコナゾール更新版：初版からの変更内容について（2022年12月13日更新）．<a href=\"https://www.chemotherapy.or.jp/modules/guideline/index.php?content_id=122\" target=\"_blank\" rel=\"noopener\">https://www.chemotherapy.or.jp/modules/guideline/index.php?content_id=122</a></p></li>\n<li><p>日本化学療法学会．初版をご利用の方：変更内容（アミノグリコシド系薬の正誤表を含む）．<a href=\"https://www.chemotherapy.or.jp/modules/guideline/index.php?content_id=134\" target=\"_blank\" rel=\"noopener\">https://www.chemotherapy.or.jp/modules/guideline/index.php?content_id=134</a></p></li>\n<li><p>Mindsガイドラインライブラリ．抗菌薬TDM臨床実践ガイドライン2022（最新版として掲載）．<a href=\"https://minds.jcqhc.or.jp/summary/c00723/\" target=\"_blank\" rel=\"noopener\">https://minds.jcqhc.or.jp/summary/c00723/</a></p></li>\n</ol>\n<h3>5．引用箇所（ガイドライン本文ページ）</h3>\n<ul>\n<li><p>VCM：CQ2～CQ4、pp.10–13（測定パラメータ、初回TDM時期、目標AUC、採血タイミング）。</p></li>\n<li><p>TEIC：CQ3～CQ5、pp.33–35（4日目トラフ、目標値、フォローアップ）。</p></li>\n<li><p>アミノグリコシド：CQ2～CQ4、pp.41–43（ピーク／トラフ採血時刻、初回TDM、目標濃度）。</p></li>\n<li><p>VRCZ：CQ2～CQ4、pp.57–59（トラフ測定、5～7日目、目標濃度と安全性）。</p></li>\n<li><p>アミノグリコシドIE併用GMのピーク目標は、2022年8月9日掲載の正誤表・更新情報を反映。</p></li>\n</ul>\n<p><strong>注意：</strong>本資料はガイドラインの要約であり、個別患者の投与設計を代替するものではない。採血時刻・投与履歴・腎機能推移を必ず確認し、施設の測定系・運用手順と照合すること。</p>\n"}};
+const WIP = "調整中（チェック未完了）";
+
+const DATA_NOTES = [
+  "サンフォードの投与量は数値が入っている行を表示しています。チェック前のため「調整中」の印を付けています。未入力の行は「データなし」と表示します。",
+  "フラジール錠：腎薬欄が未チェックのため「調整中」と表示しています。",
+];
+
+/* ---------- 補足資料 ---------- */
+const SUPP = {
+  "ペニシリンG":["ie"], "ビクシリン":["ie"], "スルバシリン":["ie"], "セファゾリン":["ie"], "セフトリアキソン":["ie"],
+  "セフェピム":["ie"], "キュビシン、ダプトマイシン":["ie"], "テイコプラニン":["ie","tdm"],
+};
+const SUPP_FOCUS = { "テイコプラニン|tdm":"テイコプラニン", "キュビシン、ダプトマイシン|ie":"ブドウ球菌", "ペニシリンG|ie":"レンサ球菌" };
+const SUPP_LABEL = { ie:"IE", tdm:"TDM" };
+let lastFocus = null;
+function openDoc(key, focusText){
+  const d = DOCS[key]; if (!d) return;
+  lastFocus = document.activeElement;
+  $("sheetTitle").textContent = d.title;
+  $("sheetBody").innerHTML = d.html;
+  $("sheet").hidden = false; document.body.style.overflow = "hidden";
+  $("sheetBody").scrollTop = 0;
+  if (focusText) {
+    const h = [...$("sheetBody").querySelectorAll("h3,h4")].find(e => e.textContent.includes(focusText));
+    if (h) { h.scrollIntoView({block:"start"}); h.classList.add("pulse"); }
+  }
+  $("sheetClose").focus();
+}
+function closeDoc(){ $("sheet").hidden = true; document.body.style.overflow = ""; if (lastFocus) lastFocus.focus(); }
+
+/* ---------- 計算 ---------- */
+const $ = id => document.getElementById(id);
+let sex = "M", route = "inj", openIds = new Set();
+let sel = new Set([DATA.classes[0]]);
+// 系統内の並び順（ペニシリン：PCG→ABPC→SBT/ABPC→PIPC→TAZ/PIPC、セフェム：第1〜第4世代→その他）
+const ORDER = ["ペニシリンG","ビクシリン","スルバシリン","ピペラシリン","タゾピペ","セファゾリン","セフォチアム","セフメタゾール","クラフォラン、セフォタックス","セフトリアキソン","セフタジジム","セフェピム","ワイスタール、スルペラゾン","フルマリン","シオマリン","ケフレックス","ケフラール","フロモックス"];
+(function sortDrugs(){
+  const ci = c => DATA.classes.indexOf(c), oi = n => { const i = ORDER.indexOf(n); return i < 0 ? 999 : i; };
+  const base = new Map(DRUGS.map((d,i) => [d, i]));
+  DRUGS.sort((a,b) => ci(a.cls)-ci(b.cls) || oi(a.name)-oi(b.name) || base.get(a)-base.get(b));
+})();
+function num(id){ const v = parseFloat($(id).value); return isFinite(v) && v > 0 ? v : null; }
+function calc(){
+  const age = num("age"), wt = num("wt"), ht = num("ht"), scrRaw = num("scr");
+  const r = {age, wt, ht, scrRaw, alerts:[]};
+  if (ht) r.ibw = (sex==="M"?50:45) + 2.3*((ht-152.4)/2.54);
+  if (wt && ht) { r.bsa = 0.007184*Math.pow(wt,0.425)*Math.pow(ht,0.725); r.bmi = wt/Math.pow(ht/100,2); }
+  if (r.ibw && wt) r.adj = r.ibw + 0.4*(wt - r.ibw);
+  const scr = scrRaw && $("scrFloor").checked ? Math.max(scrRaw,0.6) : scrRaw;
+  const mode = $("wtMode").value;
+  let wUse = wt; if (mode==="ibw") wUse = r.ibw ?? null; if (mode==="adj") wUse = r.adj ?? null;
+  if (age && wUse && scr) r.ccr = (140-age)*wUse/(72*scr)*(sex==="F"?0.85:1);
+  if (age && scr) r.egfr = 194*Math.pow(scr,-1.094)*Math.pow(age,-0.287)*(sex==="F"?0.739:1);
+  if (r.egfr && r.bsa) r.egfrU = r.egfr*r.bsa/1.73;
+  if (!age || !scrRaw) r.alerts.push("年齢と血清Crを入れると計算します（Cockcroft-Gault式・eGFRとも年齢が必要です）。");
+  else if (!wt || !ht) r.alerts.push("未補正GFRには体重と身長（体表面積）が必要です。");
+  if (age && age < 18) r.alerts.push("18歳未満：成人の式・成人用量です。小児の投与量表を使ってください。");
+  if (wt && r.ibw && mode==="actual" && (wt > r.ibw*1.2 || (r.bmi && r.bmi>30)))
+    r.alerts.push("肥満（実体重がIBWの120%超またはBMI>30）：実体重のCCrは過大評価になりえます。CCrの体重を補正体重に切り替えて比較してください。");
+  if (scrRaw && scrRaw < 0.6 && !$("scrFloor").checked)
+    r.alerts.push("Crが0.6未満：筋肉量が少ない場合は腎機能を過大評価しやすい値です。必要なら「0.6として計算」をオンにしてください。");
+  if (r.ccr != null && r.egfrU != null && Math.abs(r.ccr - r.egfrU) >= 15)
+    r.alerts.push(`CCrと未補正GFRの差が ${Math.abs(r.ccr-r.egfrU).toFixed(0)} mL/min あります。区分が分かれていないか確認してください。`);
+  return r;
+}
+
+/* ---------- 区分判定 ---------- */
+const TOP = 9999;
+function rangeLabel(t){
+  if (t.min === 0 && t.max >= TOP) return "全区分";
+  if (t.min === 0) return `<${t.max}`;
+  if (t.max >= TOP) return `≥${t.min}`;
+  return `${t.min}–${t.max}`;
+}
+const doseOf = t => t.ok ? t.dose : WIP;
+function hits(tiers, v){ if (v==null) return []; return tiers.map((t,i)=>i).filter(i => v >= tiers[i].min && v < tiers[i].max); }
+function cuts(tiers){ const s = new Set(); tiers.forEach(t => { if (t.min>0) s.add(t.min); if (t.max<TOP) s.add(t.max); }); return [...s].sort((a,b)=>a-b); }
+function nearInfo(tiers, v, w){
+  if (v==null) return [];
+  const h = new Set(hits(tiers, v)), out = [];
+  cuts(tiers).forEach(c => {
+    const d = v - c; if (Math.abs(d) > w) return;
+    const probe = d >= 0 ? c - 0.001 : c;
+    tiers.forEach((t,i) => { if (!h.has(i) && probe >= t.min && probe < t.max) out.push({cut:c, diff:d, alt:i}); });
+  });
+  return out;
+}
+const f1 = v => v==null ? "–" : (Math.round(v*10)/10).toFixed(1);
+const esc = s => String(s).replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const mkName = k => k==="ccr" ? "CCr" : "未補正GFR";
+
+/* ---------- 一覧のセル ---------- */
+function doseText(t, src){
+  if (src==="sf") return t.missing ? '<span class="na">データなし（未入力）</span>' : esc(t.dose) + (t.ok ? "" : '<span class="pend">調整中</span>');
+  return t.ok ? esc(t.dose) : `<span class="wip">${WIP}</span>`;
+}
+function doseLine(t, src){ return `<div class="dose"><span class="tier">${esc(rangeLabel(t))}</span>${doseText(t, src)}</div>`; }
+const plainDose = (t, src) => src==="sf" ? (t.missing ? "データなし" : t.dose) : doseOf(t);
+function summaryCell(tiers, metrics, w, src){
+  const valid = metrics.filter(m => m.v != null);
+  if (!valid.length) return `<div class="na">腎機能を入力すると該当区分を表示</div>`;
+  if (src!=="sf" && !tiers.some(t => t.ok)) return `<div class="wip">${WIP}</div>`;
+  if (src==="sf" && tiers.every(t => t.missing)) return `<div class="na">データなし（未入力）</div>`;
+  const hs = valid.map(m => hits(tiers, m.v));
+  const same = hs.every(h => h.join() === hs[0].join());
+  let html = "";
+  if (same) {
+    html += hs[0].length ? hs[0].map(i => doseLine(tiers[i], src)).join("") : `<div class="na">該当区分なし</div>`;
+    if (hs[0].length > 1) html += `<div class="bl">区分が重なっているため ${hs[0].length} 行が該当しています（マスタを確認）</div>`;
+  } else {
+    html += `<div class="split">` + valid.map((m,k) =>
+      `<div class="line"><span class="mk ${m.key}">${mkName(m.key)}</span><div>${hs[k].map(i => doseLine(tiers[i], src)).join("") || '<span class="na">該当区分なし</span>'}</div></div>`).join("") + `</div>`;
+    html += `<div class="bl">CCrと未補正GFRで区分が分かれています</div>`;
+  }
+  const seen = new Set();
+  valid.forEach(m => nearInfo(tiers, m.v, w).forEach(n => {
+    const key = n.cut + "-" + n.alt; if (seen.has(key)) return; seen.add(key);
+    const t = tiers[n.alt];
+    html += `<div class="bl">${mkName(m.key)} ${f1(m.v)} は境目 ${n.cut} まで ${Math.abs(n.diff).toFixed(1)}：隣の区分 <b>${esc(rangeLabel(t))}</b>「${esc(plainDose(t, src))}」も確認</div>`;
+  }));
+  return html;
+}
+
+/* ---------- 詳細 ---------- */
+function scaleHtml(tiers, metrics, w){
+  const vals = metrics.map(m=>m.v).filter(v=>v!=null);
+  const top = Math.min(200, Math.max(100, Math.ceil((Math.max(0,...vals)+15)/10)*10));
+  const pct = v => Math.max(0, Math.min(100, v/top*100));
+  let h = `<div class="scale" aria-hidden="true"><div class="bar">`;
+  tiers.slice().sort((a,b)=>a.min-b.min).forEach((t,k) => {
+    h += `<div class="seg2" style="left:${pct(t.min)}%;width:${pct(Math.min(t.max,top))-pct(t.min)}%;background:${k%2?'var(--surface2)':'var(--hit-soft)'}"></div>`;
+  });
+  h += `</div>`;
+  cuts(tiers).forEach(c => { if (c>0 && c<top) {
+    h += `<div class="band" style="left:${pct(c-w)}%;width:${pct(c+w)-pct(c-w)}%"></div>`;
+    h += `<div class="tick" style="left:${pct(c)}%"></div><div class="tl" style="left:${pct(c)}%">${c}</div>`; } });
+  h += `<div class="tl" style="left:0;transform:none">0</div><div class="tl" style="left:auto;right:0;transform:none">${top}</div>`;
+  metrics.forEach(m => { if (m.v!=null) h += `<div class="pin${m.key==="egfr"?" low":""}" style="left:${pct(m.v)}%"><span class="mk ${m.key}">${mkName(m.key)} ${f1(m.v)}</span></div>`; });
+  return h + `</div>`;
+}
+function ladder(tiers, metrics, w, src){
+  const near = new Set(); metrics.forEach(m => nearInfo(tiers,m.v,w).forEach(n => near.add(n.alt)));
+  return `<div class="ladder">` + tiers.map((t,i) => {
+    const mk = metrics.filter(m => hits(tiers,m.v).includes(i)).map(m => `<span class="mk ${m.key}">${mkName(m.key)}</span>`).join("");
+    const isNear = !mk && near.has(i);
+    const cl = ["step", mk?"hit":"", isNear?"near":"", (t.ok||src==="sf")?"":"wipstep"].join(" ");
+    return `<div class="${cl}"><span class="rng num">${esc(rangeLabel(t))}</span><span>${doseText(t, src)}</span><span class="mks">${mk}${isNear?'<span class="flag">境界</span>':""}</span></div>`;
+  }).join("") + `</div>`;
+}
+
+/* ---------- 描画 ---------- */
+function visible(){
+  const q = $("q").value.trim().toLowerCase();
+  return DRUGS.filter(d => d.routes.includes(route) && (q ? true : sel.has(d.cls)) && (!q || (d.name+d.generic).toLowerCase().includes(q)));
+}
+function render(){
+  const r = calc(), w = Math.max(0, parseFloat($("bw").value) || 0);
+  $("vCcr").innerHTML = `${f1(r.ccr)}<small>mL/min</small>`;
+  $("vEgfrU").innerHTML = `${f1(r.egfrU)}<small>mL/min</small>`;
+  $("vEgfr").textContent = f1(r.egfr);
+  $("vBsa").textContent = r.bsa ? r.bsa.toFixed(2) : "–";
+  $("vIbw").textContent = f1(r.ibw);
+  $("vBmi").textContent = f1(r.bmi);
+  $("alerts").innerHTML = r.alerts.map(a => `<div class="alert">${esc(a)}</div>`).join("");
+  const mJin = [{key:"ccr",v:r.ccr},{key:"egfr",v:r.egfrU}];
+  const items = visible();
+  let html = `<div class="listhead"><span>薬剤</span><span><span class="src jin">腎薬</span> <span class="basis">CCr／未補正GFR</span></span><span><span class="src sf">サンフォード</span> <span class="basis">CCr</span></span><span></span></div>`;
+  if (!items.length) html += `<div class="empty">${sel.size || $("q").value.trim() ? "該当する薬剤がありません" : "系統を選んでください（複数選べます）"}</div>`;
+  let lastCls = null;
+  items.forEach(d => {
+    if ((sel.size > 1 || $("q").value.trim()) && d.cls !== lastCls) { html += `<div class="grouphead">${esc(d.cls)}</div>`; lastCls = d.cls; }
+    const mSf = [{key:"ccr",v:r.ccr}];
+    const jinCell = d.jin.map(c => (c.label?`<div class="condlbl">${esc(c.label)}</div>`:"") + summaryCell(c.tiers, mJin, w, "jin")).join("");
+    const sfCell = d.sf.length ? d.sf.map(c => (c.label?`<div class="condlbl">${esc(c.label)}</div>`:"") + summaryCell(c.tiers, mSf, w, "sf")).join("") : `<div class="na">サンフォードのデータなし</div>`;
+    const jinPanel = `<div class="panel"><h3><span class="src jin">腎薬</span><span class="basis">CCr・未補正GFRで判定</span></h3>` +
+      d.jin.map(c => (c.label?`<h4>${esc(c.label)}</h4>`:"") + scaleHtml(c.tiers,mJin,w) + ladder(c.tiers,mJin,w,"jin")).join("") + `</div>`;
+    const rrtHtml = d.rrt.length ? `<h4>透析時</h4>` + d.rrt.map(x => (x.label?`<div class="condlbl">${esc(x.label)}</div>`:"") + `<dl class="rrt">${["HD","CAPD","CRRT"].map(k => `<dt>${k}</dt><dd>${esc(x[k]||"–")}<span class="pend">調整中</span></dd>`).join("")}</dl>`).join("") : "";
+    const sfNotes = d.sfNotes.length ? `<ul class="notes">${d.sfNotes.map(n=>`<li>${esc(n)}</li>`).join("")}</ul>` : "";
+    const sfPanel = `<div class="panel"><h3><span class="src sf">サンフォード 表17A</span><span class="basis">CCrで判定</span></h3>` +
+      (d.sf.length ? d.sf.map(c => (c.label?`<h4>${esc(c.label)}</h4>`:"") + (c.tiers.every(t=>t.missing) ? '<div class="na">データなし（未入力）</div>' : scaleHtml(c.tiers,mSf,w) + ladder(c.tiers,mSf,w,"sf"))).join("") : '<div class="na">サンフォードのデータなし</div>') + rrtHtml + sfNotes + `</div>`;
+    const notes = d.notes.length ? `<ul class="notes" style="grid-column:1/-1">${d.notes.map(n=>`<li>${esc(n)}</li>`).join("")}</ul>` : "";
+    html += `<details class="row" data-id="${d.id}" ${openIds.has(d.id)?"open":""}>
+      <summary>
+        <div class="dname"><b>${esc(d.name)}</b><span>${esc(d.generic)}（${esc(d.routeLabel)}）</span>${(SUPP[d.name]||[]).length ? `<span class="supp">${SUPP[d.name].map(k => `<button type="button" class="suppbtn" data-doc="${k}" data-name="${esc(d.name)}">補足：${SUPP_LABEL[k]}</button>`).join("")}</span>` : ""}</div>
+        <div class="cell"><span class="lbl src jin">腎薬</span>${jinCell}</div>
+        <div class="cell"><span class="lbl src sf">サンフォード</span>${sfCell}</div>
+        <svg class="chev" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 4l6 6-6 6"/></svg>
+      </summary>
+      <div class="detail">${jinPanel}${sfPanel}${notes}</div>
+    </details>`;
+  });
+  $("list").innerHTML = html;
+  $("list").querySelectorAll(".suppbtn").forEach(b => b.addEventListener("click", e => {
+    e.preventDefault(); e.stopPropagation();
+    openDoc(b.dataset.doc, SUPP_FOCUS[b.dataset.name + "|" + b.dataset.doc]);
+  }));
+  $("list").querySelectorAll("details").forEach(el => el.addEventListener("toggle", () => { el.open ? openIds.add(el.dataset.id) : openIds.delete(el.dataset.id); }));
+}
+function renderChips(){
+  const avail = DATA.classes.filter(c => DRUGS.some(d => d.cls===c && d.routes.includes(route)));
+  const cnt = c => DRUGS.filter(d => d.cls===c && d.routes.includes(route)).length;
+  const allOn = avail.length && avail.every(c => sel.has(c));
+  $("classChips").innerHTML = avail.map(k =>
+    `<button type="button" class="chip" data-k="${esc(k)}" aria-pressed="${sel.has(k)}">${esc(k)} <span class="num">${cnt(k)}</span></button>`).join("") +
+    `<button type="button" class="chip" data-k="__all" aria-pressed="${allOn}">すべて <span class="num">${DRUGS.filter(d=>d.routes.includes(route)).length}</span></button>`;
+  $("classChips").querySelectorAll("button").forEach(b => b.addEventListener("click", () => {
+    const k = b.dataset.k;
+    if (k === "__all") { if (allOn) sel = new Set(); else sel = new Set(avail); }
+    else sel.has(k) ? sel.delete(k) : sel.add(k);
+    renderChips(); render();
+  }));
+}
+["age","wt","ht","scr","bw","q"].forEach(id => $(id).addEventListener("input", () => { render(); }));
+["wtMode","scrFloor"].forEach(id => $(id).addEventListener("change", render));
+function setSex(s){ sex = s; $("sexM").setAttribute("aria-pressed", s==="M"); $("sexF").setAttribute("aria-pressed", s==="F"); render(); }
+$("sexM").addEventListener("click", () => setSex("M"));
+$("sexF").addEventListener("click", () => setSex("F"));
+function setRoute(r){ route = r; $("tab-inj").setAttribute("aria-selected", r==="inj"); $("tab-po").setAttribute("aria-selected", r==="po"); renderChips(); render(); }
+$("tab-inj").addEventListener("click", () => setRoute("inj"));
+$("tab-po").addEventListener("click", () => setRoute("po"));
+$("clearBtn").addEventListener("click", () => { ["age","wt","ht","scr"].forEach(id => $(id).value = ""); render(); $("age").focus(); });
+$("expandAll").addEventListener("click", () => {
+  const rows = [...$("list").querySelectorAll("details")]; const allOpen = rows.length && rows.every(r => r.open);
+  rows.forEach(r => { r.open = !allOpen; }); $("expandAll").textContent = allOpen ? "すべて開く" : "すべて閉じる";
+});
+// 補足メニュー（項目はここに足していく）
+const MENU = [
+  {key:"ie", label:"感染性心内膜炎（IE）", desc:"抗菌薬選択・投与量・投与期間"},
+  {key:"tdm", label:"TDM一覧", desc:"初回測定時期・採血タイミング・目標濃度"},
+  {key:null, label:"アレルギー交差性チェック", desc:"準備中"},
+];
+$("suppList").innerHTML = MENU.map(m => `<button type="button" role="menuitem" class="suppitem" ${m.key?`data-doc="${m.key}"`:"disabled"}><b>${esc(m.label)}</b><span>${esc(m.desc)}</span></button>`).join("");
+function setMenu(open){ $("suppList").hidden = !open; $("suppBtn").setAttribute("aria-expanded", open); }
+$("suppBtn").addEventListener("click", e => { e.stopPropagation(); setMenu($("suppList").hidden); if (!$("suppList").hidden) $("suppList").querySelector("button:not(:disabled)").focus(); });
+$("suppList").querySelectorAll("button[data-doc]").forEach(b => b.addEventListener("click", () => { setMenu(false); openDoc(b.dataset.doc); }));
+document.addEventListener("click", e => { if (!e.target.closest(".suppmenu")) setMenu(false); });
+document.addEventListener("keydown", e => { if (e.key === "Escape" && !$("suppList").hidden) { setMenu(false); $("suppBtn").focus(); } });
+$("sheetClose").addEventListener("click", closeDoc);
+$("sheetBg").addEventListener("click", closeDoc);
+document.addEventListener("keydown", e => { if (e.key === "Escape" && !$("sheet").hidden) closeDoc(); });
+$("dataNotes").innerHTML = DATA_NOTES.map(n => `<li>${esc(n)}</li>`).join("");
+renderChips(); render();
+</script>
+
+<script>
+// オフライン対応（Service Worker）の登録
+if ("serviceWorker" in navigator) {
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("./sw.js").catch(err => console.warn("SW登録に失敗:", err));
+  });
+}
+</script>
+</body>
+</html>

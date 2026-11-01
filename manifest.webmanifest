@@ -1,0 +1,17 @@
+{
+  "name": "腎機能別 抗菌薬投与量チェッカー",
+  "short_name": "腎機能別投与量",
+  "description": "CCr・未補正GFRから腎機能別の抗菌薬投与量（腎薬・サンフォード）を確認するツール",
+  "lang": "ja",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0A5A51",
+  "theme_color": "#1b262c",
+  "icons": [
+    { "src": "./icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "./icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "./icon-512-maskable.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
